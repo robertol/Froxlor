@@ -42,6 +42,13 @@ function buildFormEx($form, $part = '') {
 					}
 				}
 
+				// visible = Settings::Get('phpfpm.enabled') for example would result in false if not enabled
+				// and therefore not shown as intended. Only check if do_show is still true as it might
+				// be false due to websrv_avail
+				if (isset($groupdetails['visible']) && $do_show) {
+					$do_show = $groupdetails['visible'];
+				}
+
 				if ($do_show) {
 					if (isset($groupdetails['title']) && $groupdetails['title'] != '') {
 						$fields .= getFormGroupOutput($groupname, $groupdetails);

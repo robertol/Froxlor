@@ -118,16 +118,24 @@ if ($action == 'login') {
 		if ($userinfo['loginfail_count'] >= Settings::Get('login.maxloginattempts') && $userinfo['lastlogin_fail'] > (time() - Settings::Get('login.deactivatetime'))) {
 			redirectTo('index.php', array('showmessage' => '3'));
 			exit;
-		} elseif ($userinfo['password'] == md5($password)) {
-			// login correct
-			// reset loginfail_counter, set lastlogin_succ
-			$stmt = Database::prepare("UPDATE $table
-				SET `lastlogin_succ`= :lastlogin_succ, `loginfail_count`='0'
-				WHERE `$uid`= :uid"
-			);
-			Database::pexecute($stmt, array("lastlogin_succ" => time(), "uid" => $userinfo[$uid]));
-			$userinfo['userid'] = $userinfo[$uid];
-			$userinfo['adminsession'] = $adminsession;
+		} elseif (validatePasswordLogin($userinfo, $password, $table, $uid)) {
+		    // only show "you're banned" if the login was successfull
+		    // because we don't want to publish that the user does exist
+		    if ($userinfo['deactivated']) {
+		        unset($userinfo);
+		        redirectTo('index.php', array('showmessage' => '5'));
+		        exit;
+		    } else {
+		        // login correct
+		        // reset loginfail_counter, set lastlogin_succ
+		        $stmt = Database::prepare("UPDATE $table
+		              SET `lastlogin_succ`= :lastlogin_succ, `loginfail_count`='0'
+		              WHERE `$uid`= :uid"
+		        );
+		        Database::pexecute($stmt, array("lastlogin_succ" => time(), "uid" => $userinfo[$uid]));
+		        $userinfo['userid'] = $userinfo[$uid];
+		        $userinfo['adminsession'] = $adminsession;
+		    }
 		} else {
 			// login incorrect
 			$stmt = Database::prepare("UPDATE $table
@@ -269,6 +277,9 @@ if ($action == 'login') {
 		case 7:
 			$message = $lng['pwdreminder']['wrongcode'];
 			break;
+		case 8:
+		    $message = $lng['pwdreminder']['notallowed'];
+		    break;
 		}
 
 		$update_in_progress = '';
@@ -280,10 +291,14 @@ if ($action == 'login') {
 		$lastscript = "";
 		if (isset($_REQUEST['script']) && $_REQUEST['script'] != "") {
 			$lastscript = $_REQUEST['script'];
+
+			if (!file_exists(__DIR__."/".$lastscript)) {
+				$lastscript = "";
+			}
 		}
 		$lastqrystr = "";
 		if (isset($_REQUEST['qrystr']) && $_REQUEST['qrystr'] != "") {
-			$lastqrystr = $_REQUEST['qrystr'];
+			$lastqrystr = strip_tags($_REQUEST['qrystr']);
 		}
 
 		eval("echo \"" . getTemplate('login') . "\";");
@@ -322,8 +337,8 @@ if ($action == 'forgotpwd') {
 
 			/* Check whether user is banned */
 			if ($user['deactivated']) {
-				$message = $lng['pwdreminder']['notallowed'];
-				redirectTo('index.php', array('showmessage' => '5'));
+				redirectTo('index.php', array('showmessage' => '8'));
+				exit;
 			}
 
 			if (($adminchecked && Settings::Get('panel.allow_preset_admin') == '1') || $adminchecked == false) {
@@ -366,6 +381,10 @@ if ($action == 'forgotpwd') {
 					// this can be a fixed value to avoid potential exploiting by modifying headers
 					$host = Settings::Get('system.hostname'); // $_SERVER['HTTP_HOST'];
 					$port = $_SERVER['SERVER_PORT'] != 80 ? ':' . $_SERVER['SERVER_PORT'] : '';
+					// don't add :443 when https is used, as it is default (and just looks weird!)
+					if ($protocol == 'https' && $_SERVER['SERVER_PORT'] == '443') {
+						$port = '';
+					}
 					// there can be only one script to handle this so we can use a fixed value here
 					$script = "/index.php"; // $_SERVER['SCRIPT_NAME'];
 					if (Settings::Get('system.froxlordirectlyviahostname') == 0) {
@@ -375,11 +394,9 @@ if ($action == 'forgotpwd') {
 
 					$replace_arr = array(
 						'SALUTATION' => getCorrectUserSalutation($user),
-						'USERNAME' => $user['loginname'],
+						'USERNAME' => $loginname,
 						'LINK' => $activationlink
 					);
-
-					$body = strtr($lng['pwdreminder']['body'], array('%s' => $user['firstname'] . ' ' . $user['name'], '%a' => $activationlink));
 
 					$def_language = ($user['def_language'] != '') ? $user['def_language'] : Settings::Get('panel.standardlanguage');
 					$result_stmt = Database::prepare('SELECT `value` FROM `' . TABLE_PANEL_TEMPLATES . '`
@@ -390,7 +407,7 @@ if ($action == 'forgotpwd') {
 					);
 					Database::pexecute($result_stmt, array("adminid" => $user['adminid'], "lang" => $def_language));
 					$result = $result_stmt->fetch(PDO::FETCH_ASSOC);
-					$mail_subject = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['pwdreminder']['subject']), $replace_arr));
+					$mail_subject = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['mails']['password_reset']['subject']), $replace_arr));
 
 					$result_stmt = Database::prepare('SELECT `value` FROM `' . TABLE_PANEL_TEMPLATES . '`
 						WHERE `adminid`= :adminid
@@ -400,14 +417,14 @@ if ($action == 'forgotpwd') {
 					);
 					Database::pexecute($result_stmt, array("adminid" => $user['adminid'], "lang" => $def_language));
 					$result = $result_stmt->fetch(PDO::FETCH_ASSOC);
-					$mail_body = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $body), $replace_arr));
+					$mail_body = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['mails']['password_reset']['mailbody']), $replace_arr));
 
 					$_mailerror = false;
 					try {
 						$mail->Subject = $mail_subject;
 						$mail->AltBody = $mail_body;
 						$mail->MsgHTML(str_replace("\n", "<br />", $mail_body));
-						$mail->AddAddress($user['email'], $user['firstname'] . ' ' . $user['name']);
+						$mail->AddAddress($user['email'], getCorrectUserSalutation($user));
 						$mail->Send();
 					} catch(phpmailerException $e) {
 						$mailerr_msg = $e->errorMessage();
@@ -505,7 +522,7 @@ if ($action == 'resetpwd') {
 								WHERE `customerid` = :userid"
 							);
 						}
-						Database::pexecute($stmt, array("newpassword" => md5($new_password), "userid" => $result['userid']));
+						Database::pexecute($stmt, array("newpassword" => makeCryptPassword($new_password), "userid" => $result['userid']));
 
 						$rstlog = FroxlorLogger::getInstanceOf(array('loginname' => 'password_reset'));
 						$rstlog->logAction(USR_ACTION, LOG_NOTICE, "changed password using password reset.");

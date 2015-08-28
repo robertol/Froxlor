@@ -95,7 +95,7 @@ if ($page == 'customers'
 				 */
 				//For Disk usage
 				if ($row['diskspace'] > 0) {
-					$disk_percent = round(($row['diskspace_used']*100)/$row['diskspace'], 2);
+					$disk_percent = round(($row['diskspace_used']*100)/$row['diskspace'], 0);
 					$disk_doublepercent = round($disk_percent*2, 2);
 				} else {
 					$disk_percent = 0;
@@ -103,7 +103,7 @@ if ($page == 'customers'
 				}
 
 				if ($row['traffic'] > 0) {
-					$traffic_percent = round(($row['traffic_used']*100)/$row['traffic'], 2);
+					$traffic_percent = round(($row['traffic_used']*100)/$row['traffic'], 0);
 					$traffic_doublepercent = round($traffic_percent*2, 2);
 				} else {
 					$traffic_percent = 0;
@@ -119,6 +119,17 @@ if ($page == 'customers'
 
 				$row = str_replace_array('-1', 'UL', $row, 'diskspace traffic mysqls emails email_accounts email_forwarders ftps tickets subdomains');
 				$row = htmlentities_array($row);
+
+				// fix progress-bars if value is >100%
+				if ($disk_percent > 100) {
+					$disk_percent = 100;
+				}
+				if ($traffic_percent > 100) {
+					$traffic_percent = 100;
+				}
+
+				$row['custom_notes'] = ($row['custom_notes'] != '') ? nl2br($row['custom_notes']) : '';
+
 				eval("\$customers.=\"" . getTemplate("customers/customers_customer") . "\";");
 				$count++;
 			}
@@ -408,6 +419,12 @@ if ($page == 'customers'
 				$def_language = validate($_POST['def_language'], 'default language');
 				$gender = intval_ressource($_POST['gender']);
 
+				$custom_notes = validate(str_replace("\r\n", "\n", $_POST['custom_notes']), 'custom_notes', '/^[^\0]*$/');
+				$custom_notes_show = 0;
+				if (isset($_POST['custom_notes_show'])) {
+				    $custom_notes_show = intval_ressource($_POST['custom_notes_show']);
+				}
+
 				$diskspace = intval_ressource($_POST['diskspace']);
 				if (isset($_POST['diskspace_ul'])) {
 					$diskspace = - 1;
@@ -623,7 +640,7 @@ if ($page == 'customers'
 					}
 
 					if ($password == '') {
-						$password = substr(md5(uniqid(microtime(), 1)), 12, 6);
+						$password = generatePassword();
 					}
 
 					$_theme = Settings::Get('panel.default_theme');
@@ -631,7 +648,7 @@ if ($page == 'customers'
 					$ins_data = array(
 						'adminid' => $userinfo['adminid'],
 						'loginname' => $loginname,
-						'passwd' => md5($password),
+						'passwd' => makeCryptPassword($password),
 						'name' => $name,
 						'firstname' => $firstname,
 						'gender' => $gender,
@@ -660,7 +677,9 @@ if ($page == 'customers'
 						'imap' => $email_imap,
 						'pop3' => $email_pop3,
 						'perlenabled' => $perlenabled,
-						'theme' => $_theme
+						'theme' => $_theme,
+						'custom_notes' => $custom_notes,
+						'custom_notes_show' => $custom_notes_show
 					);
 
 					$ins_stmt = Database::prepare("
@@ -697,7 +716,9 @@ if ($page == 'customers'
 						`imap` = :imap,
 						`pop3` = :pop3,
 						`perlenabled` = :perlenabled,
-						`theme` = :theme"
+						`theme` = :theme,
+						`custom_notes` = :custom_notes,
+						`custom_notes_show` = :custom_notes_show"
 					);
 					Database::pexecute($ins_stmt, $ins_data);
 
@@ -824,7 +845,21 @@ if ($page == 'customers'
 							'guid' => $guid,
 							'members' => $loginname.','.Settings::Get('system.httpuser')
 					);
+
+					// also, add froxlor-local user to ftp-group (if exists!) to
+					// allow access to customer-directories from within the panel, which
+					// is necessary when pathedit = Dropdown
+					if ((int)Settings::Get('system.mod_fcgid_ownvhost') == 1 || (int)Settings::Get('phpfpm.enabled_ownvhost') == 1) {
+						if ((int)Settings::Get('system.mod_fcgid') == 1) {
+							$local_user = Settings::Get('system.mod_fcgid_httpuser');
+						} else {
+							$local_user = Settings::Get('phpfpm.vhost_httpuser');
+						}
+						$ins_data['members'] .= ','.$local_user;
+					}
+
 					Database::pexecute($ins_stmt, $ins_data);
+
 					// FTP-Quotatallies
 					$ins_stmt = Database::prepare("
 						INSERT INTO `" . TABLE_FTP_QUOTATALLIES . "` SET `name` = :name, `quota_type` = 'user', `bytes_in_used` = '0',
@@ -857,7 +892,7 @@ if ($page == 'customers'
 							`domain` = :domain,
 							`customerid` = :customerid,
 							`adminid` = :adminid,
-							`parentdomainid` = '-1',
+							`parentdomainid` = '0',
 							`documentroot` = :docroot,
 							`zonefile` = '',
 							`isemaildomain` = '0',
@@ -955,32 +990,8 @@ if ($page == 'customers'
 				}
 
 			} else {
-				$language_options = '';
-
-				while (list($language_file, $language_name) = each($languages)) {
-					$language_options.= makeoption($language_name, $language_file, Settings::Get('panel.standardlanguage'), true);
-				}
-
-				$diskspace_ul = makecheckbox('diskspace_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$traffic_ul = makecheckbox('traffic_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$subdomains_ul = makecheckbox('subdomains_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$emails_ul = makecheckbox('emails_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$email_accounts_ul = makecheckbox('email_accounts_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$email_forwarders_ul = makecheckbox('email_forwarders_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$email_quota_ul = makecheckbox('email_quota_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$ftps_ul = makecheckbox('ftps_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$tickets_ul = makecheckbox('tickets_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-				$mysqls_ul = makecheckbox('mysqls_ul', $lng['customer']['unlimited'], '-1', false, '0', true, true);
-
-				$gender_options = makeoption($lng['gender']['undef'], 0, true, true, true);
-				$gender_options .= makeoption($lng['gender']['male'], 1, null, true, true);
-				$gender_options .= makeoption($lng['gender']['female'], 2, null, true, true);
-
-				$customer_add_data = include_once dirname(__FILE__).'/lib/formfields/admin/customer/formfield.customer_add.php';
-				$customer_add_form = htmlform::genHTMLForm($customer_add_data);
-
-				$title = $customer_add_data['customer_add']['title'];
-				$image = $customer_add_data['customer_add']['image'];
+				$customer_add_data = include_once dirname(__FILE__).'/lib/formfields/admin/formfield.customer.php';
+				$customer_add_form = HTMLform2::genHTMLform($customer_add_data);
 
 				eval("echo \"" . getTemplate("customers/customers_add") . "\";");
 			}
@@ -999,6 +1010,24 @@ if ($page == 'customers'
 			$result_data['adminid'] = $userinfo['adminid'];
 		}
 		$result = Database::pexecute_first($result_stmt, $result_data);
+
+		/*
+		 * information for moving customer
+		 */
+		$available_admins_stmt = Database::prepare("
+                        SELECT * FROM `" . TABLE_PANEL_ADMINS . "`
+                        WHERE (`customers` = '-1' OR `customers` > `customers_used`)"
+		);
+		Database::pexecute($available_admins_stmt);
+		$admin_select = makeoption("-----", 0, true, true, true);
+		$admin_select_cnt = 0;
+		while ($available_admin = $available_admins_stmt->fetch()) {
+			$admin_select .= makeoption($available_admin['name']." (".$available_admin['loginname'].")", $available_admin['adminid'], null, true, true);
+			$admin_select_cnt++;
+		}
+		/*
+		 * end of moving customer stuff
+		 */
 
 		if ($result['loginname'] != '') {
 
@@ -1019,6 +1048,14 @@ if ($page == 'customers'
 				$def_language = validate($_POST['def_language'], 'default language');
 				$password = validate($_POST['new_customer_password'], 'new password');
 				$gender = intval_ressource($_POST['gender']);
+
+				$move_to_admin = isset($_POST['move_to_admin']) ? intval_ressource($_POST['move_to_admin']) : 0;
+
+				$custom_notes = validate(str_replace("\r\n", "\n", $_POST['custom_notes']), 'custom_notes', '/^[^\0]*$/');
+				$custom_notes_show = $result['custom_notes_show'];
+				if (isset($_POST['custom_notes_show'])) {
+				    $custom_notes_show = intval_ressource($_POST['custom_notes_show']);
+				}
 
 				$diskspace = intval_ressource($_POST['diskspace']);
 				if (isset($_POST['diskspace_ul'])) {
@@ -1160,7 +1197,7 @@ if ($page == 'customers'
 
 					if ($password != '') {
 						$password = validatePassword($password);
-						$password = md5($password);
+						$password = makeCryptPassword($password);
 					} else {
 						$password = $result['password'];
 					}
@@ -1193,7 +1230,7 @@ if ($page == 'customers'
 							`domain` = :domain,
 							`customerid` = :customerid,
 							`adminid` = :adminid,
-							`parentdomainid` = '-1',
+							`parentdomainid` = '0',
 							`documentroot` = :docroot,
 							`zonefile` = '',
 							`isemaildomain` = '0',
@@ -1355,7 +1392,9 @@ if ($page == 'customers'
 						'phpenabled' => $phpenabled,
 						'imap' => $email_imap,
 						'pop3' => $email_pop3,
-						'perlenabled' => $perlenabled
+						'perlenabled' => $perlenabled,
+						'custom_notes' => $custom_notes,
+						'custom_notes_show' => $custom_notes_show
 					);
 					$upd_stmt = Database::prepare("
 						UPDATE `" . TABLE_PANEL_CUSTOMERS . "` SET
@@ -1386,7 +1425,9 @@ if ($page == 'customers'
 						`email_quota` = :email_quota,
 						`imap` = :imap,
 						`pop3` = :pop3,
-						`perlenabled` = :perlenabled
+						`perlenabled` = :perlenabled,
+						`custom_notes` = :custom_notes,
+						`custom_notes_show` = :custom_notes_show
 						WHERE `customerid` = :customerid"
 					);
 					Database::pexecute($upd_stmt, $upd_data);
@@ -1498,6 +1539,17 @@ if ($page == 'customers'
 					$admin_update_query.= " WHERE `adminid` = '" . (int)$result['adminid'] . "'";
 					Database::query($admin_update_query);
 					$log->logAction(ADM_ACTION, LOG_INFO, "edited user '" . $result['loginname'] . "'");
+
+					/*
+					 * move customer to another admin/reseller; #1166
+					 */
+					if ($move_to_admin > 0 && $move_to_admin != $result['adminid']) {
+						$move_result = moveCustomerToAdmin($id, $move_to_admin);
+						if ($move_result != true) {
+							standard_error('moveofcustomerfailed', $move_result);
+						}
+					}
+
 					$redirect_props = Array(
 						'page' => $page,
 						's' => $s
@@ -1507,78 +1559,15 @@ if ($page == 'customers'
 				}
 
 			} else {
-				$language_options = '';
-
-				while (list($language_file, $language_name) = each($languages)) {
-					$language_options.= makeoption($language_name, $language_file, $result['def_language'], true);
-				}
-
 				$dec_places = Settings::Get('panel.decimal_places');
 				$result['traffic'] = round($result['traffic'] / (1024 * 1024), $dec_places);
 				$result['diskspace'] = round($result['diskspace'] / 1024, $dec_places);
 				$result['email'] = $idna_convert->decode($result['email']);
 
-				$diskspace_ul = makecheckbox('diskspace_ul', $lng['customer']['unlimited'], '-1', false, $result['diskspace'], true, true);
-				if ($result['diskspace'] == '-1') {
-					$result['diskspace'] = '';
-				}
-
-				$traffic_ul = makecheckbox('traffic_ul', $lng['customer']['unlimited'], '-1', false, $result['traffic'], true, true);
-				if ($result['traffic'] == '-1') {
-					$result['traffic'] = '';
-				}
-
-				$subdomains_ul = makecheckbox('subdomains_ul', $lng['customer']['unlimited'], '-1', false, $result['subdomains'], true, true);
-				if ($result['subdomains'] == '-1') {
-					$result['subdomains'] = '';
-				}
-
-				$emails_ul = makecheckbox('emails_ul', $lng['customer']['unlimited'], '-1', false, $result['emails'], true, true);
-				if ($result['emails'] == '-1') {
-					$result['emails'] = '';
-				}
-
-				$email_accounts_ul = makecheckbox('email_accounts_ul', $lng['customer']['unlimited'], '-1', false, $result['email_accounts'], true, true);
-				if ($result['email_accounts'] == '-1') {
-					$result['email_accounts'] = '';
-				}
-
-				$email_forwarders_ul = makecheckbox('email_forwarders_ul', $lng['customer']['unlimited'], '-1', false, $result['email_forwarders'], true, true);
-				if ($result['email_forwarders'] == '-1') {
-					$result['email_forwarders'] = '';
-				}
-
-				$email_quota_ul = makecheckbox('email_quota_ul', $lng['customer']['unlimited'], '-1', false, $result['email_quota'], true, true);
-				if ($result['email_quota'] == '-1') {
-					$result['email_quota'] = '';
-				}
-
-				$ftps_ul = makecheckbox('ftps_ul', $lng['customer']['unlimited'], '-1', false, $result['ftps'], true, true);
-				if ($result['ftps'] == '-1') {
-					$result['ftps'] = '';
-				}
-
-				$tickets_ul = makecheckbox('tickets_ul', $lng['customer']['unlimited'], '-1', false, $result['tickets'], true, true);
-				if ($result['tickets'] == '-1') {
-					$result['tickets'] = '';
-				}
-
-				$mysqls_ul = makecheckbox('mysqls_ul', $lng['customer']['unlimited'], '-1', false, $result['mysqls'], true, true);
-				if ($result['mysqls'] == '-1') {
-					$result['mysqls'] = '';
-				}
-
 				$result = htmlentities_array($result);
 
-				$gender_options = makeoption($lng['gender']['undef'], 0, ($result['gender'] == '0' ? true : false), true, true);
-				$gender_options .= makeoption($lng['gender']['male'], 1, ($result['gender'] == '1' ? true : false), true, true);
-				$gender_options .= makeoption($lng['gender']['female'], 2, ($result['gender'] == '2' ? true : false), true, true);
-
-				$customer_edit_data = include_once dirname(__FILE__).'/lib/formfields/admin/customer/formfield.customer_edit.php';
-				$customer_edit_form = htmlform::genHTMLForm($customer_edit_data);
-
-				$title = $customer_edit_data['customer_edit']['title'];
-				$image = $customer_edit_data['customer_edit']['image'];
+				$customer_edit_data = include_once dirname(__FILE__).'/lib/formfields/admin/formfield.customer.php';
+				$customer_edit_form = HTMLform2::genHTMLform($customer_edit_data, $result);
 
 				eval("echo \"" . getTemplate("customers/customers_edit") . "\";");
 			}

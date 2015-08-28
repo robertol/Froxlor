@@ -15,7 +15,9 @@
  *
  */
 
-class nginx {
+require_once(dirname(__FILE__).'/../classes/class.HttpConfigBase.php');
+
+class nginx extends HttpConfigBase {
 	private $logger = false;
 	private $debugHandler = false;
 	private $idnaConvert = false;
@@ -151,7 +153,7 @@ class nginx {
 					if ($row_ipsandports['ssl_ca_file'] == '') {
 						$row_ipsandports['ssl_ca_file'] = Settings::Get('system.ssl_ca_file');
 					}
-					if ($row_ipsandports['ssl_cert_file'] != '') {
+					if ($row_ipsandports['ssl_cert_file'] != '' && file_exists($row_ipsandports['ssl_cert_file'])) {
 						$ssl_vhost = true;
 					}
 				}
@@ -187,29 +189,37 @@ class nginx {
 				$this->nginx_data[$vhost_filename] .= "\t".'}'."\n";
 
 				if ($row_ipsandports['specialsettings'] != '') {
-					$this->nginx_data[$vhost_filename].= $row_ipsandports['specialsettings'] . "\n";
+					$this->nginx_data[$vhost_filename].= $this->processSpecialConfigTemplate(
+							$row_ipsandports['specialsettings'],
+							array('domain'=> Settings::Get('system.hostname'),
+								  'loginname' => Settings::Get('phpfpm.vhost_httpuser'),
+								  'documentroot'=> $mypath),
+							$row_ipsandports['ip'],
+							$row_ipsandports['port'],
+							$row_ipsandports['ssl'] == '1'). "\n";
 				}
 
 				/**
 				 * SSL config options
 				 */
 				if ($row_ipsandports['ssl'] == '1') {
+				    $row_ipsandports['domain'] = Settings::Get('system.hostname');
 					$this->nginx_data[$vhost_filename].=$this->composeSslSettings($row_ipsandports);
 				}
 
-				$this->nginx_data[$vhost_filename] .= "\t".'location ~ \.php$ {'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t".' if (!-f $request_filename) {'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t\t".'return 404;'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t".'}'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t".'fastcgi_index index.php;'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t".'include '.Settings::Get('nginx.fastcgiparams').';'."\n";
-				$this->nginx_data[$vhost_filename] .= "\t\t".'fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;'."\n";
+				$this->nginx_data[$vhost_filename] .= "\tlocation ~ \.php {\n";
+				$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_split_path_info ^(.+\.php)(/.+)\$;\n";
+				$this->nginx_data[$vhost_filename] .= "\t\tinclude fastcgi_params;\n";
+				$this->nginx_data[$vhost_filename] .= "\t\tinclude ".Settings::Get('nginx.fastcgiparams').";\n";
+				$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;\n";
+				$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_param PATH_INFO \$fastcgi_path_info;\n";
+				$this->nginx_data[$vhost_filename] .= "\t\ttry_files \$fastcgi_script_name =404;\n";
+				
 				if ($row_ipsandports['ssl'] == '1') {
-					$this->nginx_data[$vhost_filename] .= "\t\t".'fastcgi_param HTTPS on;'."\n";
+					$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_param HTTPS on;\n";
 				}
-				if ((int)Settings::Get('phpfpm.enabled') == 1
-					&& (int)Settings::Get('phpfpm.enabled_ownvhost') == 1
-				) {
+				
+				if ((int)Settings::Get('phpfpm.enabled') == 1 && (int)Settings::Get('phpfpm.enabled_ownvhost') == 1) {
 					$domain = array(
 						'id' => 'none',
 						'domain' => Settings::Get('system.hostname'),
@@ -222,14 +232,17 @@ class nginx {
 						'loginname' => 'froxlor.panel',
 						'documentroot' => $mypath,
 					);
-
+					
 					$php = new phpinterface($domain);
-					$this->nginx_data[$vhost_filename] .= "\t\t".'fastcgi_pass unix:' . $php->getInterface()->getSocketFile() . ';' . "\n";
+					$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_pass unix:".$php->getInterface()->getSocketFile().";\n";
 				} else {
-					$this->nginx_data[$vhost_filename] .= "\t\t".'fastcgi_pass ' . Settings::Get('system.nginx_php_backend') . ';' . "\n";
+					$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_pass ".Settings::Get('system.nginx_php_backend').";\n";
 				}
-				$this->nginx_data[$vhost_filename] .= "\t".'}'."\n";
-				$this->nginx_data[$vhost_filename] .= '}' . "\n\n";
+				
+				$this->nginx_data[$vhost_filename] .= "\t\tfastcgi_index index.php;\n";
+				$this->nginx_data[$vhost_filename] .= "\t}\n";
+				
+				$this->nginx_data[$vhost_filename] .= "}\n\n";
 				// End of Froxlor server{}-part
 			}
 		}
@@ -286,14 +299,15 @@ class nginx {
 			&& ((int)$domain['ismainbutsubto'] == 0
 				|| domainMainToSubExists($domain['ismainbutsubto']) == false)
 		) {
-			$vhost_no = '22';
+			$vhost_no = '35';
 		} elseif ((int)$domain['parentdomainid'] == 0
 			&& isCustomerStdSubdomain((int)$domain['id']) == false
 			&& (int)$domain['ismainbutsubto'] > 0
 		) {
-			$vhost_no = '21';
+			$vhost_no = '30';
 		} else {
-			$vhost_no = '20';
+			// number of dots in a domain specifies it's position (and depth of subdomain) starting at 29 going downwards on higher depth
+			$vhost_no = (string)(30 - substr_count($domain['domain'], ".") + 1);
 		}
 
 		if ($ssl_vhost === true) {
@@ -360,7 +374,12 @@ class nginx {
 			}
 
 			if ($ipandport['default_vhostconf_domain'] != '') {
-				$_vhost_content .= $ipandport['default_vhostconf_domain'] . "\n";
+				$_vhost_content .= $this->processSpecialConfigTemplate(
+						$ipandport['default_vhostconf_domain'],
+						$domain,
+						$domain['ip'],
+						$domain['port'],
+						$ssl_vhost). "\n";
 			}
 
 			$vhost_content.= "\t" . 'listen ' . $ipport . ($ssl_vhost == true ? ' ssl' : '') . ';' . "\n";
@@ -416,132 +435,162 @@ class nginx {
 				) {
 					$vhost_content.= $this->composeSslSettings($domain);
 				}
-				$vhost_content.= $this->create_pathOptions($domain);
+				$vhost_content = $this->mergeVhostCustom($vhost_content, $this->create_pathOptions($domain)) . "\n";
 				$vhost_content.= $this->composePhpOptions($domain, $ssl_vhost);
 
 				$vhost_content.= isset($this->needed_htpasswds[$domain['id']]) ? $this->needed_htpasswds[$domain['id']] . "\n" : '';
 
 				if ($domain['specialsettings'] != "") {
-					$vhost_content .= $domain['specialsettings'] . "\n";
+					$vhost_content = $this->mergeVhostCustom($vhost_content, $this->processSpecialConfigTemplate(
+						$domain['specialsettings'],
+						$domain,
+						$domain['ip'],
+						$domain['port'],
+						$ssl_vhost
+					));
 				}
 
 				if ($_vhost_content != '') {
-					$vhost_content .= $_vhost_content;
+					$vhost_content = $this->mergeVhostCustom($vhost_content, $_vhost_content);
 				}
 
 				if (Settings::Get('system.default_vhostconf') != '') {
-					$vhost_content .= Settings::Get('system.default_vhostconf') . "\n";
+					$vhost_content = $this->mergeVhostCustom($vhost_content,
+						$this->processSpecialConfigTemplate(
+							Settings::Get('system.default_vhostconf'),
+							$domain,
+							$domain['ip'],
+							$domain['port'],
+							$ssl_vhost)."\n");
 				}
 			}
 		}
-		$vhost_content .= '}' . "\n\n";
+		$vhost_content .= "\n}\n\n";
 
-		return $this->mergeVhostBlocks($vhost_content);
+		return $vhost_content;
 	}
 
+	protected function mergeVhostCustom($vhost_frx, $vhost_usr) {
+		// Clean froxlor defined settings
+		$vhost_frx = explode("\n", preg_replace('/[ \t]+/', ' ', trim(preg_replace('/\t+/', '', $vhost_frx)))); // Break into array items
+		$vhost_frx = array_map("trim", $vhost_frx); // remove unnecessary whitespaces
 
-	protected function mergeVhostBlocks($vhost_content) {
-		$vhost_content = str_replace("\r", "\n", $vhost_content); // Remove windows linebreaks
-		$vhost_content = preg_replace('/^[\s\t]*#.*/m', "", $vhost_content); // Remove comments
-		$vhost_content = str_replace(array("{", "}"), array("{\n", "\n}"), $vhost_content); // Break blocks into lines
-		$vhost_content = explode("\n", preg_replace('/[ \t]+/', ' ', trim(preg_replace('/\t+/', '', $vhost_content))));
-		$vhost_content = array_filter($vhost_content, create_function('$a','return preg_match("#\S#", $a);'));
+		// Clean user defined settings
+		$vhost_usr = str_replace("\r", "\n", $vhost_usr); // Remove windows linebreaks
+		$vhost_usr = str_replace(array("{ ", " }"), array("{\n", "\n}"), $vhost_usr); // Break blocks into lines
+		$vhost_usr = explode("\n", preg_replace('/[ \t]+/', ' ', trim(preg_replace('/\t+/', '', $vhost_usr)))); // Break into array items
+		$vhost_usr = array_filter($vhost_usr, create_function('$a','return preg_match("#\S#", $a);')); // Remove empty lines
 
-		// Merge similar blocks
-		$new_vhost_content = array();
-		$isOpen = false;
-		$addAfter = false;
-		foreach ($vhost_content as $line) {
+		// Cycle through the user defined settings
+		$currentBlock = array();
+		$blockLevel = 0;
+		foreach ($vhost_usr as $line) {
 			$line = trim($line);
+			$currentBlock[] = $line;
 
-			if (substr_count($line, "{") != 0 && substr_count($line, "}") == 0 && substr_count($line, "server") == 0 && $isOpen === false) {
-				$isOpen = true;
-				$addAfter = array_search($line, $new_vhost_content);
-				if ($addAfter === false) {
-					$new_vhost_content[] = $line;
-				}
-			} elseif ($isOpen === true) {
-				if (substr_count($line, "}") != 0 && substr_count($line, "{") == 0) {
-					$isOpen = false;
-					if ($addAfter === false) {
-						$new_vhost_content[] = "}";
-					} else {
-						$addAfter = false;
+			if (strpos($line, "{") !== false) {
+				$blockLevel++;
+			}
+			if (strpos($line, "}") !== false && $blockLevel > 0) {
+				$blockLevel--;
+			}
+
+			if ($line == "}" && $blockLevel == 0) {
+				if (in_array($currentBlock[0], $vhost_frx)) {
+					// Add to existing block
+					$pos = array_search($currentBlock[0], $vhost_frx);
+					do {
+						$pos++;
+					} while ($vhost_frx[$pos] != "}");
+
+					for ($i = 1; $i < count($currentBlock) - 1; $i++) {
+						array_splice($vhost_frx, $pos + $i - 1, 0, $currentBlock[$i]);
 					}
 				} else {
-					if ($addAfter != false) {
-						for ($i = $addAfter; $i < count($new_vhost_content); $i++) {
-							if ($new_vhost_content[$i] == "}") {
-								$addAt = $i;
-								break;
-							}
-						}
-						array_splice($new_vhost_content, $addAt, 0, $line);
-					} else {
-						$new_vhost_content[] = $line;
-					}
+					// Add to end
+					array_splice($vhost_frx, count($vhost_frx), 0, $currentBlock);
 				}
-			} else {
-				$new_vhost_content[] = $line;
+				$currentBlock = array();
+			} elseif ($blockLevel == 0) {
+				array_splice($vhost_frx, count($vhost_frx), 0, $currentBlock);
+				$currentBlock = array();
 			}
 		}
 
-		// Fix idention
 		$nextLevel = 0;
-		for ($i = 0; $i < count($new_vhost_content); $i++) {
-			if (substr_count($new_vhost_content[$i], "}") != 0 && substr_count($new_vhost_content[$i], "{") == 0) {
+		for ($i = 0; $i < count($vhost_frx); $i++) {
+			if (substr_count($vhost_frx[$i], "}") != 0 && substr_count($vhost_frx[$i], "{") == 0) {
 				$nextLevel -= 1;
+				$vhost_frx[$i] .= "\n";
 			}
 			if ($nextLevel > 0) {
 				for ($j = 0; $j < $nextLevel; $j++) {
-					$new_vhost_content[$i] = "	" . $new_vhost_content[$i];
+					$vhost_frx[$i] = "	" . $vhost_frx[$i];
 				}
 			}
-			if (substr_count($new_vhost_content[$i], "{") != 0 && substr_count($new_vhost_content[$i], "}") == 0) {
+			if (substr_count($vhost_frx[$i], "{") != 0 && substr_count($vhost_frx[$i], "}") == 0) {
 				$nextLevel += 1;
 			}
 		}
 
-		return implode("\n", $new_vhost_content);
+		return implode("\n", $vhost_frx);
 	}
 
-
-	protected function composeSslSettings($domain) {
+	protected function composeSslSettings($domain_or_ip) {
 
 		$sslsettings = '';
 
-		if ($domain['ssl_cert_file'] == '') {
-			$domain['ssl_cert_file'] = Settings::Get('system.ssl_cert_file');
+		if ($domain_or_ip['ssl_cert_file'] == '') {
+			$domain_or_ip['ssl_cert_file'] = Settings::Get('system.ssl_cert_file');
 		}
 
-		if ($domain['ssl_key_file'] == '') {
-			$domain['ssl_key_file'] = Settings::Get('system.ssl_key_file');
+		if ($domain_or_ip['ssl_key_file'] == '') {
+			$domain_or_ip['ssl_key_file'] = Settings::Get('system.ssl_key_file');
 		}
 
-		if ($domain['ssl_ca_file'] == '') {
-			$domain['ssl_ca_file'] = Settings::Get('system.ssl_ca_file');
+		if ($domain_or_ip['ssl_ca_file'] == '') {
+			$domain_or_ip['ssl_ca_file'] = Settings::Get('system.ssl_ca_file');
 		}
 
 		// #418
-		if ($domain['ssl_cert_chainfile'] == '') {
-			$domain['ssl_cert_chainfile'] = Settings::Get('system.ssl_cert_chainfile');
+		if ($domain_or_ip['ssl_cert_chainfile'] == '') {
+			$domain_or_ip['ssl_cert_chainfile'] = Settings::Get('system.ssl_cert_chainfile');
 		}
 
-		if ($domain['ssl_cert_file'] != '') {
-			// obsolete: ssl on now belongs to the listen block as 'ssl' at the end
-			//$sslsettings .= "\t" . 'ssl on;' . "\n";
-			$sslsettings .= "\t" . 'ssl_protocols SSLv3 TLSv1 TLSv1.1 TLSv1.2;' . "\n";
-			$sslsettings .= "\t" . 'ssl_ciphers ' . Settings::Get('system.ssl_cipher_list') . ';' . "\n";
-			$sslsettings .= "\t" . 'ssl_prefer_server_ciphers on;' . "\n";
-			$sslsettings .= "\t" . 'ssl_certificate ' . makeCorrectFile($domain['ssl_cert_file']) . ';' . "\n";
-
-			if ($domain['ssl_key_file'] != '') {
-				$sslsettings .= "\t" . 'ssl_certificate_key ' .makeCorrectFile($domain['ssl_key_file']) . ';' .  "\n";
-			}
-
-			if ($domain['ssl_ca_file'] != '') {
-				$sslsettings.= "\t" . 'ssl_client_certificate ' . makeCorrectFile($domain['ssl_ca_file']) . ';' . "\n";
-			}
+		if ($domain_or_ip['ssl_cert_file'] != '') {
+		    
+		    // check for existence, #1485
+		    if (!file_exists($domain_or_ip['ssl_cert_file'])) {
+		        $this->logger->logAction(CRON_ACTION, LOG_ERROR, $domain_or_ip['domain'] . ' :: certificate file "'.$domain_or_ip['ssl_cert_file'].'" does not exist! Cannot create ssl-directives');
+		        echo $domain_or_ip['domain'] . ' :: certificate file "'.$domain_or_ip['ssl_cert_file'].'" does not exist! Cannot create SSL-directives'."\n";
+		    } else {
+    			// obsolete: ssl on now belongs to the listen block as 'ssl' at the end
+    			//$sslsettings .= "\t" . 'ssl on;' . "\n";
+    			$sslsettings .= "\t" . 'ssl_protocols TLSv1 TLSv1.1 TLSv1.2;' . "\n";
+    			$sslsettings .= "\t" . 'ssl_ciphers ' . Settings::Get('system.ssl_cipher_list') . ';' . "\n";
+    			$sslsettings .= "\t" . 'ssl_prefer_server_ciphers on;' . "\n";
+    			$sslsettings .= "\t" . 'ssl_certificate ' . makeCorrectFile($domain_or_ip['ssl_cert_file']) . ';' . "\n";
+    
+    			if ($domain_or_ip['ssl_key_file'] != '') {
+    			    // check for existence, #1485
+    			    if (!file_exists($domain_or_ip['ssl_key_file'])) {
+    			        $this->logger->logAction(CRON_ACTION, LOG_ERROR, $domain_or_ip['domain'] . ' :: certificate key file "'.$domain_or_ip['ssl_key_file'].'" does not exist! Cannot create ssl-directives');
+    			        echo $domain_or_ip['domain'] . ' :: certificate key file "'.$domain_or_ip['ssl_key_file'].'" does not exist! SSL-directives might not be working'."\n";
+    			    } else {
+    				    $sslsettings .= "\t" . 'ssl_certificate_key ' .makeCorrectFile($domain_or_ip['ssl_key_file']) . ';' .  "\n";
+    			    }
+    			}
+    
+    			if ($domain_or_ip['ssl_ca_file'] != '') {
+    			    // check for existence, #1485
+    			    if (!file_exists($domain_or_ip['ssl_ca_file'])) {
+    			        $this->logger->logAction(CRON_ACTION, LOG_ERROR, $domain_or_ip['domain'] . ' :: certificate CA file "'.$domain_or_ip['ssl_ca_file'].'" does not exist! Cannot create ssl-directives');
+    			        echo $domain_or_ip['domain'] . ' :: certificate CA file "'.$domain_or_ip['ssl_ca_file'].'" does not exist! SSL-directives might not be working'."\n";
+    			    } else {
+    				    $sslsettings.= "\t" . 'ssl_client_certificate ' . makeCorrectFile($domain_or_ip['ssl_ca_file']) . ';' . "\n";
+    			    }
+    			}
+		    }
 		}
 
 		return $sslsettings;
@@ -593,13 +642,17 @@ class nginx {
 
 			$path_options .= "\t".'# '.$path."\n";
 			if ($path == '/') {
-				$this->vhost_root_autoindex = true;
+				if ($row['options_indexes'] != '0') {
+					$this->vhost_root_autoindex = true;
+				}
 				$path_options .= "\t".'location ' . $path . ' {' . "\n";
 				if ($this->vhost_root_autoindex) {
 					$path_options .= "\t\t" . 'autoindex  on;' . "\n";
 					$this->vhost_root_autoindex = false;
 				}
-				$path_options.= "\t\t" . 'index    index.php index.html index.htm;'."\n";
+				else {
+					$path_options.= "\t\t" . 'index    index.php index.html index.htm;'."\n";
+				}
 				//     $path_options.= "\t\t" . 'try_files $uri $uri/ @rewrites;'."\n";
 				// check if we have a htpasswd for this path
 				// (damn nginx does not like more than one
@@ -613,7 +666,7 @@ class nginx {
 							break;
 						default:
 							if ($single['path'] == '/') {
-								$path_options .= "\t\t" . 'auth_basic            "Restricted Area";' . "\n";
+								$path_options .= "\t\t" . 'auth_basic            "' . $single['authname']  . '";' . "\n";
 								$path_options .= "\t\t" . 'auth_basic_user_file  ' . makeCorrectFile($single['usrf']) . ';'."\n";
 								// remove already used entries so we do not have doubles
 								unset($htpasswds[$idx]);
@@ -626,11 +679,13 @@ class nginx {
 				$this->vhost_root_autoindex = false;
 			} else {
 				$path_options .= "\t".'location ' . $path . ' {' . "\n";
-				if ($this->vhost_root_autoindex) {
+				if ($this->vhost_root_autoindex || $row['options_indexes'] != '0') {
 					$path_options .= "\t\t" . 'autoindex  on;' . "\n";
 					$this->vhost_root_autoindex = false;
 				}
-				$path_options .= "\t\t" . 'index    index.php index.html index.htm;'."\n";
+				else {
+					$path_options .= "\t\t" . 'index    index.php index.html index.htm;'."\n";
+				}
 				$path_options .= "\t".'} ' . "\n";
 			}
 			//   }
@@ -671,7 +726,7 @@ class nginx {
 					break;
 				default:
 					$path_options .= "\t" . 'location ' . makeCorrectDir($single['path']) . ' {' . "\n";
-					$path_options .= "\t\t" . 'auth_basic            "Restricted Area";' . "\n";
+					$path_options .= "\t\t" . 'auth_basic            "' . $single['authname']  . '";' . "\n";
 					$path_options .= "\t\t" . 'auth_basic_user_file  ' . makeCorrectFile($single['usrf']) . ';'."\n";
 					$path_options .= "\t".'}' . "\n";
 				}
@@ -687,7 +742,7 @@ class nginx {
 	protected function getHtpasswds($domain) {
 
 		$result_stmt = Database::prepare("
-			SELECT DISTINCT *
+			SELECT *
 			FROM `" . TABLE_PANEL_HTPASSWDS . "` AS a
 			JOIN `" . TABLE_PANEL_DOMAINS . "` AS b USING (`customerid`)
 			WHERE b.customerid = :customerid AND b.domain = :domain
@@ -720,10 +775,15 @@ class nginx {
 
 				$returnval[$x]['path'] = $path;
 				$returnval[$x]['root'] = makeCorrectDir($domain['documentroot']);
+				$returnval[$x]['authname'] = $row_htpasswds['authname'];
 				$returnval[$x]['usrf'] = $htpasswd_filename;
 				$x++;
 			}
 		}
+
+		// Remove duplicate entries
+		$returnval = array_map("unserialize", array_unique(array_map("serialize", $returnval)));
+
 		return $returnval;
 	}
 
@@ -731,21 +791,23 @@ class nginx {
 	protected function composePhpOptions($domain, $ssl_vhost = false) {
 		$phpopts = '';
 		if ($domain['phpenabled'] == '1') {
-			$phpopts = "\t".'location ~ \.php$ {'."\n";
-			$phpopts.= "\t\t".'try_files $uri =404;'."\n";
-			$phpopts.= "\t\t".'fastcgi_split_path_info ^(.+\.php)(/.+)$;'."\n";
-			$phpopts.= "\t\t".'fastcgi_index index.php;'."\n";
-			$phpopts.= "\t\t".'fastcgi_pass ' . Settings::Get('system.nginx_php_backend') . ';' . "\n";
-			$phpopts.= "\t\t".'fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;'."\n";
-			$phpopts.= "\t\t".'include '.Settings::Get('nginx.fastcgiparams').';'."\n";
+			$phpopts = "\tlocation ~ \.php {\n";
+			$phpopts .= "\t\tfastcgi_split_path_info ^(.+\.php)(/.+)\$;\n";
+			$phpopts .= "\t\tinclude ".Settings::Get('nginx.fastcgiparams').";\n";
+			$phpopts .= "\t\tfastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;\n";
+			$phpopts .= "\t\tfastcgi_param PATH_INFO \$fastcgi_path_info;\n";
+			$phpopts .= "\t\ttry_files \$fastcgi_script_name =404;\n";
+			$phpopts .= "\t\tfastcgi_pass ".Settings::Get('system.nginx_php_backend').";\n";
+			$phpopts .= "\t\tfastcgi_index index.php;\n";
 			if ($domain['ssl'] == '1' && $ssl_vhost) {
-				$phpopts.= "\t\t".'fastcgi_param HTTPS on;'."\n";
+				$phpopts .= "\t\tfastcgi_param HTTPS on;\n";
 			}
-			$phpopts.= "\t".'}'."\n";
+			$phpopts .= "\t}\n\n";
+			
 		}
 		return $phpopts;
 	}
-
+	
 
 	protected function getWebroot($domain, $ssl) {
 		$webroot_text = '';
@@ -805,7 +867,7 @@ class nginx {
 		}
 
 		$stats_text .= "\t\t" . 'alias ' . $alias_dir . ';' . "\n";
-		$stats_text .= "\t\t" . 'auth_basic            "Restricted Area";' . "\n";
+		$stats_text .= "\t\t" . 'auth_basic            "' . $single['authname']  . '";' . "\n";
 		$stats_text .= "\t\t" . 'auth_basic_user_file  ' . makeCorrectFile($single['usrf']) . ';'."\n";
 		$stats_text .= "\t" . '}' . "\n\n";
 
@@ -936,7 +998,8 @@ class nginx {
 		fwrite($this->debugHandler, '  nginx::writeConfigs: rebuilding ' . Settings::Get('system.apacheconf_vhost') . "\n");
 		$this->logger->logAction(CRON_ACTION, LOG_INFO, "rebuilding " . Settings::Get('system.apacheconf_vhost'));
 
-		if (!isConfigDir(Settings::Get('system.apacheconf_vhost'))) {
+		$vhostDir = new frxDirectory(Settings::Get('system.apacheconf_vhost'));
+		if (!$vhostDir->isConfigDir()) {
 			// Save one big file
 			$vhosts_file = '';
 
@@ -997,6 +1060,8 @@ class nginx {
 				foreach ($this->htpasswds_data as $htpasswd_filename => $htpasswd_file) {
 					$this->known_htpasswdsfilenames[] = basename($htpasswd_filename);
 					$htpasswd_file_handler = fopen($htpasswd_filename, 'w');
+					// Filter duplicate pairs of username and password
+					$htpasswd_file = implode("\n", array_unique(explode("\n", $htpasswd_file)));
 					fwrite($htpasswd_file_handler, $htpasswd_file);
 					fclose($htpasswd_file_handler);
 				}

@@ -86,6 +86,26 @@ while ($row = $result_tasks_stmt->fetch(PDO::FETCH_ASSOC)) {
 		} else {
 			echo "Please check you Webserver settings\n";
 		}
+
+		// if we use php-fpm and have a local user for froxlor, we need to
+		// add the webserver-user to the local-group in order to allow the webserver
+		// to access the fpm-socket
+		if (Settings::Get('phpfpm.enabled') == 1 && function_exists("posix_getgrnam")) {
+			// get group info about the local-user's group (e.g. froxlorlocal)
+			$groupinfo = posix_getgrnam(Settings::Get('phpfpm.vhost_httpgroup'));
+			// check group members
+			if (isset($groupinfo['members'])
+				&& !in_array(Settings::Get('system.httpuser'), $groupinfo['members'])
+			) {
+				// webserver has no access, add it
+				if (isFreeBSD()) {
+					safe_exec('pw user mod '.escapeshellarg(Settings::Get('system.httpuser')).' -G '.escapeshellarg(Settings::Get('phpfpm.vhost_httpgroup')));
+				} else {
+					safe_exec('usermod -a -G ' . escapeshellarg(Settings::Get('phpfpm.vhost_httpgroup')).' '.escapeshellarg(Settings::Get('system.httpuser')));
+				}
+			}
+		}
+
 	}
 
 	/**
@@ -210,7 +230,9 @@ while ($row = $result_tasks_stmt->fetch(PDO::FETCH_ASSOC)) {
 					&& filegroup($maildir) == Settings::Get('system.vmail_gid')
 				) {
 					$cronlog->logAction(CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' . escapeshellarg($maildir));
-					safe_exec('rm -rf '.escapeshellarg($maildir));
+					// mail-address allows many special characters, see http://en.wikipedia.org/wiki/Email_address#Local_part
+					$return = false;
+					safe_exec('rm -rf '.escapeshellarg($maildir), $return, array('|', '&', '`', '$', '~', '?'));
 				}
 
 				// remove tmpdir if it exists
@@ -281,7 +303,9 @@ while ($row = $result_tasks_stmt->fetch(PDO::FETCH_ASSOC)) {
 					&& filegroup($maildir) == Settings::Get('system.vmail_gid')
 				) {
 					$cronlog->logAction(CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' . escapeshellarg($maildir));
-					safe_exec('rm -rf '.escapeshellarg($maildir));
+					// mail-address allows many special characters, see http://en.wikipedia.org/wiki/Email_address#Local_part
+					$return = false;
+					safe_exec('rm -rf '.escapeshellarg($maildir), $return, array('|', '&', '`', '$', '~', '?'));
 
 				} else {
 					// backward-compatibility for old folder-structure
@@ -296,7 +320,9 @@ while ($row = $result_tasks_stmt->fetch(PDO::FETCH_ASSOC)) {
 						&& filegroup($maildir_old) == Settings::Get('system.vmail_gid')
 					) {
 						$cronlog->logAction(CRON_ACTION, LOG_NOTICE, 'Running: rm -rf ' . escapeshellarg($maildir_old));
-						safe_exec('rm -rf '.escapeshellarg($maildir_old));
+						// mail-address allows many special characters, see http://en.wikipedia.org/wiki/Email_address#Local_part
+						$return = false;
+						safe_exec('rm -rf '.escapeshellarg($maildir_old), $return, array('|', '&', '`', '$', '~', '?'));
 					}
 				}
 			}
@@ -342,34 +368,37 @@ while ($row = $result_tasks_stmt->fetch(PDO::FETCH_ASSOC)) {
 
 		$usedquota = getFilesystemQuota();
 
-		// Select all customers Froxlor knows about
-		$result_stmt = Database::query("SELECT `guid`, `loginname`, `diskspace` FROM `" . TABLE_PANEL_CUSTOMERS . "`;");
-		while ($row = $result_stmt->fetch(PDO::FETCH_ASSOC)) {
-			// We do not want to set a quota for root by accident
-			if ($row['guid'] != 0) {
-				// The user has no quota in Froxlor, but on the filesystem
-				if (($row['diskspace'] == 0 || $row['diskspace'] == -1024)
-					&& $usedquota[$row['guid']]['block']['hard'] != 0
-				) {
-					$cronlog->logAction(CRON_ACTION, LOG_NOTICE, "Disabling quota for " . $row['loginname']);
-					if (isFreeBSD()) {
-						safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -e " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')) . ":0:0 " . $row['guid']);
-					} else {
-						safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -u " . $row['guid'] . " -bl 0 -q 0 " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')));
+		// Check whether we really have entries to check
+		if (is_array($usedquota) && count($usedquota) > 0) {
+			// Select all customers Froxlor knows about
+			$result_stmt = Database::query("SELECT `guid`, `loginname`, `diskspace` FROM `" . TABLE_PANEL_CUSTOMERS . "`;");
+			while ($row = $result_stmt->fetch(PDO::FETCH_ASSOC)) {
+				// We do not want to set a quota for root by accident
+				if ($row['guid'] != 0) {
+					// The user has no quota in Froxlor, but on the filesystem
+					if (($row['diskspace'] == 0 || $row['diskspace'] == -1024)
+						&& $usedquota[$row['guid']]['block']['hard'] != 0
+					) {
+						$cronlog->logAction(CRON_ACTION, LOG_NOTICE, "Disabling quota for " . $row['loginname']);
+						if (isFreeBSD()) {
+							safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -e " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')) . ":0:0 " . $row['guid']);
+						} else {
+							safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -u " . $row['guid'] . " -bl 0 -q 0 " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')));
+						}
+					}
+					// The user quota in Froxlor is different than on the filesystem
+					elseif ($row['diskspace'] != $usedquota[$row['guid']]['block']['hard']
+						&& $row['diskspace'] != -1024
+					) {
+						$cronlog->logAction(CRON_ACTION, LOG_NOTICE, "Setting quota for " . $row['loginname'] . " from " . $usedquota[$row['guid']]['block']['hard'] . " to " . $row['diskspace']);
+						if (isFreeBSD()) {
+							safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -e " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')) . ":" . $row['diskspace'] . ":" . $row['diskspace'] . " " . $row['guid']);
+						} else {
+							safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -u " . $row['guid'] . " -bl " . $row['diskspace'] . " -q " . $row['diskspace'] . " " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')));
+						}
 					}
 				}
-				// The user quota in Froxlor is different than on the filesystem
-				elseif ($row['diskspace'] != $usedquota[$row['guid']]['block']['hard']
-					&& $row['diskspace'] != -1024
-				) {
-					$cronlog->logAction(CRON_ACTION, LOG_NOTICE, "Setting quota for " . $row['loginname'] . " from " . $usedquota[$row['guid']]['block']['hard'] . " to " . $row['diskspace']);
-					if (isFreeBSD()) {
-						safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -e " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')) . ":" . $row['diskspace'] . ":" . $row['diskspace'] . " " . $row['guid']);
-					} else {
-						safe_exec(Settings::Get('system.diskquota_quotatool_path') . " -u " . $row['guid'] . " -bl " . $row['diskspace'] . " -q " . $row['diskspace'] . " " . escapeshellarg(Settings::Get('system.diskquota_customer_partition')));
-					}
-				}
-			}
+			}	
 		}
 	}
 }

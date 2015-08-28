@@ -21,7 +21,7 @@ function validateFormFieldString($fieldname, $fielddata, $newfieldvalue)
 {
 	if(isset($fielddata['string_delimiter']) && $fielddata['string_delimiter'] != '')
 	{
-		$newfieldvalues = explode($fielddata['string_delimiter'], $newfieldvalue);
+		$newfieldvalues = array_map('trim', explode($fielddata['string_delimiter'], $newfieldvalue));
 		unset($fielddata['string_delimiter']);
 
 		$returnvalue = true;
@@ -107,8 +107,14 @@ function validateFormFieldString($fieldname, $fielddata, $newfieldvalue)
 			}
 		}
 		elseif (isset($fielddata['string_type']) && $fielddata['string_type'] == 'validate_ip') {
-			$newfieldvalue = validate_ip2($newfieldvalue);
-			$returnvalue = ($newfieldvalue !== false ? true : 'invalidip');
+		    // check for empty value (it might be allowed)
+		    if (trim($newfieldvalue) == '') {
+		        $newfieldvalue = '';
+		        $returnvalue = 'stringmustntbeempty';
+		    } else {
+		        $newfieldvalue = validate_ip2($newfieldvalue, true);
+		        $returnvalue = ($newfieldvalue !== false ? true : 'invalidip');
+		    }
 		}
 		elseif (preg_match('/^[^\r\n\t\f\0]*$/D', $newfieldvalue)) {
 			$returnvalue = true;

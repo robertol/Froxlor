@@ -102,6 +102,11 @@ if ($page == 'overview') {
 			if ($row['parentdomainid'] == 0) {
 				$domain_sort_array[$sortkey][$sortkey] = $row;
 			} else {
+				// when searching and the results are subdomains only, we need to get
+				// the parent domain to this subdomain
+				if (!isset($domain_id_array[$row['parentdomainid']])) {
+				    $domain_id_array[$row['parentdomainid']] = "[parent-domain]";
+				}
 				$domain_sort_array[$domain_id_array[$row['parentdomainid']]][$sortkey] = $row;
 			}
 		}
@@ -117,13 +122,16 @@ if ($page == 'overview') {
 		$i = 0;
 		foreach ($domain_sort_array as $sortkey => $domain_array) {
 			if ($paging->checkDisplay($i)) {
-				$row = htmlentities_array($domain_array[$sortkey]);
-				if (Settings::Get('system.awstats_enabled') == '1') {
-					$statsapp = 'awstats';
-				} else {
-					$statsapp = 'webalizer';
+
+				if (isset($domain_array[$sortkey])) {
+					$row = htmlentities_array($domain_array[$sortkey]);
+					if (Settings::Get('system.awstats_enabled') == '1') {
+					   $statsapp = 'awstats';
+					} else {
+					   $statsapp = 'webalizer';
+					}
+					eval("\$domains.=\"" . getTemplate("domains/domains_delimiter") . "\";");
 				}
-				eval("\$domains.=\"" . getTemplate("domains/domains_delimiter") . "\";");
 
 				if ($paging->sortfield == 'd.domain' && $paging->sortorder == 'asc') {
 					ksort($domain_array);
@@ -133,7 +141,7 @@ if ($page == 'overview') {
 
 				foreach ($domain_array as $row) {
 					if (strpos($row['documentroot'], $userinfo['documentroot']) === 0) {
-						$row['documentroot'] = makeCorrectDir(substr($row['documentroot'], strlen($userinfo['documentroot'])));
+						$row['documentroot'] = makeCorrectDir(substr($row['documentroot'], strlen($userinfo['documentroot']) - 1));
 					}
 
 					// get ssl-ips if activated
@@ -230,6 +238,12 @@ if ($page == 'overview') {
 				$domain_check = Database::pexecute_first($domain_stmt, array("domain" => $domain, "customerid" => $userinfo['customerid']));
 
 				$completedomain = $subdomain . '.' . $domain;
+
+				if ($completedomain == Settings::Get('system.hostname')) {
+					standard_error('admin_domain_emailsystemhostname');
+					exit;
+				}
+
 				$completedomain_stmt = Database::prepare("SELECT * FROM `" . TABLE_PANEL_DOMAINS . "`
 					WHERE `domain` = :domain
 					AND `customerid` = :customerid
@@ -293,6 +307,7 @@ if ($page == 'overview') {
 					// ssl ip/port assigned to the domain
 					if (domainHasSslIpPort($domain_check['id']) == true) {
 						$ssl_redirect = '1';
+						$_doredirect = true;
 					} else {
 						standard_error('sslredirectonlypossiblewithsslipport');
 					}
@@ -406,6 +421,7 @@ if ($page == 'overview') {
 				$domains_stmt = Database::prepare("SELECT `d`.`id`, `d`.`domain` FROM `" . TABLE_PANEL_DOMAINS . "` `d`, `" . TABLE_PANEL_CUSTOMERS . "` `c`
 					WHERE `d`.`aliasdomain` IS NULL
 					AND `d`.`id` <> `c`.`standardsubdomain`
+					AND `d`.`parentdomainid` = '0'
 					AND `d`.`customerid`=`c`.`customerid`
 					AND `d`.`email_only`='0'
 					AND `d`.`customerid`= :customerid
@@ -533,6 +549,7 @@ if ($page == 'overview') {
 					// ssl ip/port assigned to the domain
 					if (domainHasSslIpPort($id) == true) {
 						$ssl_redirect = '1';
+						$_doredirect = true;
 					} else {
 						standard_error('sslredirectonlypossiblewithsslipport');
 					}
@@ -607,6 +624,7 @@ if ($page == 'overview') {
 					WHERE `d`.`aliasdomain` IS NULL
 					AND `d`.`id` <> :id
 					AND `c`.`standardsubdomain` <> `d`.`id`
+					AND `d`.`parentdomainid` = '0'
 					AND `d`.`customerid` = :customerid
 					AND `c`.`customerid` = `d`.`customerid`
 					AND `d`.`id` = `dip`.`id_domain`

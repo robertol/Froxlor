@@ -44,7 +44,7 @@ return array(
 					'varname' => 'vhost_httpuser',
 					'type' => 'string',
 					'default' => 'froxlorlocal',
-					'save_method' => 'storeSettingField'
+					'save_method' => 'storeSettingWebserverFcgidFpmUser'
 					),
 				'system_phpfpm_httpgroup' => array(
 					'label' => $lng['phpfpm']['vhost_httpgroup'],
@@ -185,9 +185,16 @@ return array(
 					'default' => 30,
 					'save_method' => 'storeSettingField'
 					),
+				'system_phpfpm_use_mod_proxy' => array(
+					'label' => $lng['phpfpm']['use_mod_proxy'],
+					'settinggroup' => 'phpfpm',
+					'varname' => 'use_mod_proxy',
+					'type' => 'bool',
+					'default' => false,
+					'visible' => Settings::Get('system.apache24'),
+					'save_method' => 'storeSettingField'
+					),
 				),
 			),
 		),
 	);
-
-?>

@@ -372,7 +372,8 @@ class FroxlorInstall {
 		$content .= $this->_status_message('begin', $this->_lng['install']['adding_admin_user']);
 		$ins_data = array(
 				'loginname' => $this->_data['admin_user'],
-				'password' => md5($this->_data['admin_pass1']),
+				/* use SHA256 default crypt */
+				'password' => crypt($this->_data['admin_pass1'], '$5$'. md5(uniqid(microtime(), 1)) . md5(uniqid(microtime(), 1))),
 				'email' => 'admin@' . $this->_data['servername'],
 				'deflang' => $this->_languages[$this->_activelng]
 		);
@@ -479,6 +480,9 @@ class FroxlorInstall {
 		$db->query("UPDATE `".TABLE_PANEL_CRONRUNS."` SET `lastrun` = '".$ts."' WHERE `cronfile` ='cron_used_tickets_reset.php';");
 		$db->query("UPDATE `".TABLE_PANEL_CRONRUNS."` SET `lastrun` = '".$ts."' WHERE `cronfile` ='cron_ticketarchive.php';");
 
+		// insert task 99 to generate a correct cron.d-file automatically
+		$db->query("INSERT INTO `".TABLE_PANEL_TASKS."` SET `type` = '99';");
+
 		$content .= $this->_status_message('green', 'OK');
 
 		return $content;
@@ -564,7 +568,7 @@ class FroxlorInstall {
 
 		// we have to create a new user and database for the froxlor unprivileged mysql access
 		$content .= $this->_status_message('begin', $this->_lng['install']['create_mysqluser_and_db']);
-		$ins_stmt = $db_root->prepare("CREATE DATABASE `".str_replace('`', '', $this->_data['mysql_database'])."`");
+		$ins_stmt = $db_root->prepare("CREATE DATABASE `".str_replace('`', '', $this->_data['mysql_database'])."` CHARACTER SET=utf8 COLLATE=utf8_general_ci");
 		$ins_stmt->execute();
 
 		$mysql_access_host_array = array_map('trim', explode(',', $this->_data['mysql_access_host']));
@@ -689,25 +693,25 @@ class FroxlorInstall {
 		$formdata .= $this->_getSectionItemString('mysql_database', true);
 		// unpriv-user has to be different from root
 		if ($this->_data['mysql_unpriv_user'] == $this->_data['mysql_root_user']) {
-			$style = 'color:blue;';
+			$style = 'blue';
 		} else { $style = '';
 		}
 		$formdata .= $this->_getSectionItemString('mysql_unpriv_user', true, $style);
 		// is we posted and no password was given -> red
 		if (!empty($_POST['installstep']) && $this->_data['mysql_unpriv_pass'] == '') {
-			$style = 'color:red;';
+			$style = 'red';
 		} else { $style = '';
 		}
 		$formdata .= $this->_getSectionItemString('mysql_unpriv_pass', true, $style, 'password');
 		// unpriv-user has to be different from root
 		if ($this->_data['mysql_unpriv_user'] == $this->_data['mysql_root_user']) {
-			$style = 'color:blue;';
+			$style = 'blue';
 		} else { $style = '';
 		}
 		$formdata .= $this->_getSectionItemString('mysql_root_user', true, $style);
 		// is we posted and no password was given -> red
 		if (!empty($_POST['installstep']) && $this->_data['mysql_root_pass'] == '') {
-			$style = 'color:red;';
+			$style = 'red';
 		} else { $style = '';
 		}
 		$formdata .= $this->_getSectionItemString('mysql_root_pass', true, $style, 'password');
@@ -847,14 +851,16 @@ class FroxlorInstall {
 			$content .= $this->_status_message('green', PHP_VERSION);
 		}
 
-		// Check if magic_quotes_runtime is active
-		$content .= $this->_status_message('begin', $this->_lng['requirements']['phpmagic_quotes_runtime']);
-		if (get_magic_quotes_runtime()) {
-			// deactivate it
-			set_magic_quotes_runtime(false);
-			$content .= $this->_status_message('orange', $this->_lng['requirements']['not_true'] . "<br />". $this->_lng['requirements']['phpmagic_quotes_runtime_description']);
-		} else {
-			$content .= $this->_status_message('green', 'off');
+		// Check if magic_quotes_runtime is active | get_magic_quotes_runtime() is always FALSE since 5.4
+		if (version_compare(PHP_VERSION, "5.4.0", "<")) {
+			$content .= $this->_status_message('begin', $this->_lng['requirements']['phpmagic_quotes_runtime']);
+			if (get_magic_quotes_runtime()) {
+				// deactivate it
+				set_magic_quotes_runtime(false);
+				$content .= $this->_status_message('orange', $this->_lng['requirements']['not_true'] . "<br />". $this->_lng['requirements']['phpmagic_quotes_runtime_description']);
+			} else {
+				$content .= $this->_status_message('green', 'off');
+			}
 		}
 
 		// check for php_pdo and pdo_mysql
@@ -895,6 +901,16 @@ class FroxlorInstall {
 			$_die = true;
 		} else {
 			$content .= $this->_status_message('green', $this->_lng['requirements']['installed']);
+		}
+
+		// check for bstring-extension
+		$content .= $this->_status_message('begin', $this->_lng['requirements']['phpmbstring']);
+
+		if (!extension_loaded('mbstring')) {
+		    $content .= $this->_status_message('red', $this->_lng['requirements']['notinstalled']);
+		    $_die = true;
+		} else {
+		    $content .= $this->_status_message('green', $this->_lng['requirements']['installed']);
 		}
 
 		// check for bcmath extension
@@ -977,6 +993,7 @@ class FroxlorInstall {
 			) {
 				// use sparkle theme for the notice
 				$installed_hint = file_get_contents($this->_basepath.'/templates/Sparkle/misc/alreadyinstalledhint.tpl');
+				$installed_hint = str_replace("<CURRENT_YEAR>", date('Y', time()), $installed_hint);
 				die($installed_hint);
 			}
 		}
@@ -1032,7 +1049,7 @@ class FroxlorInstall {
 	private function _getTemplate($template = null) {
 		// build filename
 		$filename = $this->_basepath.'/install/templates/' . $template . '.tpl';
-		// check existance
+		// check existence
 		if(file_exists($filename)
 				&& is_readable($filename)
 		) {
@@ -1058,9 +1075,9 @@ class FroxlorInstall {
 	 */
 	private function _status_message($case, $text) {
 		if ($case == 'begin') {
-			return '<tr><td style="width: 250px;">'.$text;
+			return '<tr><td class="install-step">'.$text;
 		} else {
-			return '</td><td><span style="color:'.$case.';">'.$text.'</span></td></tr>';
+			return '</td><td><span class="'.$case.'">'.$text.'</span></td></tr>';
 		}
 	}
 
@@ -1215,7 +1232,7 @@ class FroxlorInstall {
 		// we don't actually care about the matches preg gives us.
 		$matches = array();
 
-		// this is faster than calling count($oktens) every time thru the loop.
+		// this is faster than calling count($tokens) every time through the loop.
 		$token_count = count($tokens);
 		for ($i = 0; $i < $token_count; $i++) {
 			// Don't wanna add an empty string as the last thing in the array.

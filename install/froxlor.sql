@@ -91,7 +91,7 @@ DROP TABLE IF EXISTS `panel_admins`;
 CREATE TABLE `panel_admins` (
   `adminid` int(11) unsigned NOT NULL auto_increment,
   `loginname` varchar(50) NOT NULL default '',
-  `password` varchar(50) NOT NULL default '',
+  `password` varchar(255) NOT NULL default '',
   `name` varchar(255) NOT NULL default '',
   `email` varchar(255) NOT NULL default '',
   `def_language` varchar(255) NOT NULL default '',
@@ -131,6 +131,8 @@ CREATE TABLE `panel_admins` (
   `loginfail_count` int(11) unsigned NOT NULL default '0',
   `reportsent` tinyint(4) unsigned NOT NULL default '0',
   `theme` varchar(255) NOT NULL default 'Sparkle',
+  `custom_notes` text,
+  `custom_notes_show` tinyint(1) NOT NULL default '0',
    PRIMARY KEY  (`adminid`),
    UNIQUE KEY `loginname` (`loginname`)
 ) ENGINE=MyISAM CHARSET=utf8 COLLATE=utf8_general_ci;
@@ -141,7 +143,7 @@ DROP TABLE IF EXISTS `panel_customers`;
 CREATE TABLE `panel_customers` (
   `customerid` int(11) unsigned NOT NULL auto_increment,
   `loginname` varchar(50) NOT NULL default '',
-  `password` varchar(50) NOT NULL default '',
+  `password` varchar(255) NOT NULL default '',
   `adminid` int(11) unsigned NOT NULL default '0',
   `name` varchar(255) NOT NULL default '',
   `firstname` varchar(255) NOT NULL default '',
@@ -190,6 +192,8 @@ CREATE TABLE `panel_customers` (
   `imap` tinyint(1) NOT NULL default '1',
   `perlenabled` tinyint(1) NOT NULL default '0',
   `theme` varchar(255) NOT NULL default 'Sparkle',
+  `custom_notes` text,
+  `custom_notes_show` tinyint(1) NOT NULL default '0',
    PRIMARY KEY  (`customerid`),
    UNIQUE KEY `loginname` (`loginname`)
 ) ENGINE=MyISAM CHARSET=utf8 COLLATE=utf8_general_ci;
@@ -217,7 +221,6 @@ CREATE TABLE `panel_domains` (
   `customerid` int(11) unsigned NOT NULL default '0',
   `aliasdomain` int(11) unsigned NULL,
   `documentroot` varchar(255) NOT NULL default '',
-  `ipandport` int(11) unsigned NOT NULL default '1',
   `isbinddomain` tinyint(1) NOT NULL default '0',
   `isemaildomain` tinyint(1) NOT NULL default '0',
   `email_only` tinyint(1) NOT NULL default '0',
@@ -227,17 +230,15 @@ CREATE TABLE `panel_domains` (
   `zonefile` varchar(255) NOT NULL default '',
   `dkim` tinyint(1) NOT NULL default '0',
   `dkim_id` int(11) unsigned NOT NULL default '0',
-  `dkim_privkey` text NOT NULL default '',
-  `dkim_pubkey` text NOT NULL default '',
+  `dkim_privkey` text,
+  `dkim_pubkey` text,
   `wwwserveralias` tinyint(1) NOT NULL default '1',
-  `parentdomainid` int(11) unsigned NOT NULL default '0',
+  `parentdomainid` int(11) NOT NULL default '0',
   `openbasedir` tinyint(1) NOT NULL default '0',
   `openbasedir_path` tinyint(1) NOT NULL default '0',
   `speciallogfile` tinyint(1) NOT NULL default '0',
-  `ssl` tinyint(4) NOT NULL default '0',
   `ssl_redirect` tinyint(4) NOT NULL default '0',
-  `ssl_ipandport` tinyint(4) NOT NULL default '0',
-  `specialsettings` text NOT NULL,
+  `specialsettings` text,
   `deactivated` tinyint(1) NOT NULL default '0',
   `bindserial` varchar(10) NOT NULL default '2000010100',
   `add_date` int( 11 ) NOT NULL default '0',
@@ -263,12 +264,12 @@ CREATE TABLE `panel_ipsandports` (
   `namevirtualhost_statement` tinyint(1) NOT NULL default '0',
   `vhostcontainer` tinyint(1) NOT NULL default '0',
   `vhostcontainer_servername_statement` tinyint(1) NOT NULL default '0',
-  `specialsettings` text NOT NULL default '',
+  `specialsettings` text,
   `ssl` tinyint(4) NOT NULL default '0',
   `ssl_cert_file` varchar(255) NOT NULL,
   `ssl_key_file` varchar(255) NOT NULL,
   `ssl_ca_file` varchar(255) NOT NULL,
-  `default_vhostconf_domain` text NOT NULL,
+  `default_vhostconf_domain` text,
   `ssl_cert_chainfile` varchar(255) NOT NULL,
   `docroot` varchar(255) NOT NULL default '',
   PRIMARY KEY  (`id`)
@@ -407,6 +408,7 @@ INSERT INTO `panel_settings` (`settinggroup`, `varname`, `value`) VALUES
 	('phpfpm', 'defaultini', '1'),
 	('phpfpm', 'vhost_defaultini', '2'),
 	('phpfpm', 'fastcgi_ipcdir', '/var/lib/apache2/fastcgi/'),
+	('phpfpm', 'use_mod_proxy', '0'),
 	('nginx', 'fastcgiparams', '/etc/nginx/fastcgi_params'),
 	('system', 'lastaccountnumber', '0'),
 	('system', 'lastguid', '9999'),
@@ -484,13 +486,13 @@ INSERT INTO `panel_settings` (`settinggroup`, `varname`, `value`) VALUES
 	('system', 'mod_fcgid_defaultini_ownvhost', '2'),
 	('system', 'awstats_icons', '/usr/share/awstats/icon/'),
 	('system', 'ssl_cert_chainfile', ''),
-	('system', 'ssl_cipher_list', 'ECDHE-RSA-AES128-SHA256:AES128-GCM-SHA256:RC4:HIGH:!MD5:!aNULL:!EDH'),
+	('system', 'ssl_cipher_list', 'ECDH+AESGCM:ECDH+AES256:!aNULL:!MD5:!DSS:!DH:!AES128'),
 	('system', 'nginx_php_backend', '127.0.0.1:8888'),
 	('system', 'perl_server', 'unix:/var/run/nginx/cgiwrap-dispatch.sock'),
 	('system', 'phpreload_command', ''),
 	('system', 'apache24', '0'),
 	('system', 'documentroot_use_default_value', '0'),
-	('system', 'passwordcryptfunc', '1'),
+	('system', 'passwordcryptfunc', '3'),
 	('system', 'axfrservers', ''),
 	('system', 'customer_ssl_path', '/etc/ssl/froxlor-custom/'),
 	('system', 'allow_error_report_admin', '1'),
@@ -505,6 +507,8 @@ INSERT INTO `panel_settings` (`settinggroup`, `varname`, `value`) VALUES
 	('system', 'croncmdline', '/usr/bin/nice -n 5 /usr/bin/php5 -q'),
 	('system', 'cron_allowautoupdate', '0'),
 	('system', 'dns_createhostnameentry', '0'),
+	('system', 'send_cron_errors', '0'),
+	('system', 'apacheitksupport', '0'),
 	('panel', 'decimal_places', '4'),
 	('panel', 'adminmail', 'admin@SERVERNAME'),
 	('panel', 'phpmyadmin_url', ''),
@@ -527,19 +531,22 @@ INSERT INTO `panel_settings` (`settinggroup`, `varname`, `value`) VALUES
 	('panel', 'allow_preset', '1'),
 	('panel', 'allow_preset_admin', '0'),
 	('panel', 'password_regex', ''),
-	('panel', 'use_webfonts', '0'),
-	('panel', 'webfont', 'Numans'),
 	('panel', 'phpconfigs_hidestdsubdomain', '0'),
 	('panel', 'allow_theme_change_admin', '1'),
 	('panel', 'allow_theme_change_customer', '1'),
-	('panel', 'version', '0.9.33-dev2');
+	('panel', 'password_alpha_lower', '1'),
+	('panel', 'password_alpha_upper', '1'),
+	('panel', 'password_numeric', '0'),
+	('panel', 'password_special_char_required', '0'),
+	('panel', 'password_special_char', '!?<>§$%+#=@'),
+	('panel', 'version', '0.9.34-dev4');
 
 
 DROP TABLE IF EXISTS `panel_tasks`;
 CREATE TABLE `panel_tasks` (
   `id` int(11) unsigned NOT NULL auto_increment,
   `type` int(11) NOT NULL default '0',
-  `data` text NOT NULL default '',
+  `data` text NOT NULL,
   PRIMARY KEY  (`id`)
 ) ENGINE=MyISAM CHARSET=utf8 COLLATE=utf8_general_ci;
 
@@ -644,11 +651,11 @@ CREATE TABLE `panel_languages` (
 INSERT INTO `panel_languages` (`id`, `language`, `iso`, `file`) VALUES
     (1, 'Deutsch', 'de', 'lng/german.lng.php'),
     (2, 'English', 'en', 'lng/english.lng.php'),
-    (3, 'Français', 'fr', 'lng/french.lng.php'),
+    (3, 'Fran&ccedil;ais', 'fr', 'lng/french.lng.php'),
     (4, 'Portugu&ecirc;s', 'pt', 'lng/portugues.lng.php'),
-    (5, 'Italian', 'it', 'lng/italian.lng.php'),
-    (6, 'Dutch', 'nl', 'lng/dutch.lng.php'),
-    (7, 'Swedish', 'sv', 'lng/swedish.lng.php');
+    (5, 'Italiano', 'it', 'lng/italian.lng.php'),
+    (6, 'Nederlands', 'nl', 'lng/dutch.lng.php'),
+    (7, 'Svenska', 'sv', 'lng/swedish.lng.php');
 
 
 
@@ -706,6 +713,7 @@ CREATE TABLE `panel_phpconfigs` (
   `file_extensions` varchar(255) NOT NULL,
   `mod_fcgid_starter` int(4) NOT NULL DEFAULT '-1',
   `mod_fcgid_maxrequests` int(4) NOT NULL DEFAULT '-1',
+  `mod_fcgid_umask` varchar(15) NOT NULL DEFAULT '022',
   `fpm_slowlog` tinyint(1) NOT NULL default '0',
   `fpm_reqterm` varchar(15) NOT NULL default '60s',
   `fpm_reqslow` varchar(15) NOT NULL default '5s',
@@ -716,8 +724,8 @@ CREATE TABLE `panel_phpconfigs` (
 
 
 INSERT INTO `panel_phpconfigs` (`id`, `description`, `binary`, `file_extensions`, `mod_fcgid_starter`, `mod_fcgid_maxrequests`, `phpsettings`) VALUES
-(1, 'Default Config', '/usr/bin/php-cgi', 'php', '-1', '-1', 'allow_call_time_pass_reference = Off\r\nallow_url_fopen = Off\r\nasp_tags = Off\r\ndisable_classes =\r\ndisable_functions = curl_exec,curl_multi_exec,exec,parse_ini_file,passthru,popen,proc_close,proc_get_status,proc_nice,proc_open,proc_terminate,shell_exec,show_source,system\r\ndisplay_errors = Off\r\ndisplay_startup_errors = Off\r\nenable_dl = Off\r\nerror_reporting = E_ALL & ~E_NOTICE\r\nexpose_php = Off\r\nfile_uploads = On\r\ncgi.force_redirect = 1\r\ngpc_order = "GPC"\r\nhtml_errors = Off\r\nignore_repeated_errors = Off\r\nignore_repeated_source = Off\r\ninclude_path = ".:{PEAR_DIR}"\r\nlog_errors = On\r\nlog_errors_max_len = 1024\r\nmagic_quotes_gpc = Off\r\nmagic_quotes_runtime = Off\r\nmagic_quotes_sybase = Off\r\nmax_execution_time = 30\r\nmax_input_time = 60\r\nmemory_limit = 16M\r\n{OPEN_BASEDIR_C}open_basedir = "{OPEN_BASEDIR}"\r\noutput_buffering = 4096\r\npost_max_size = 16M\r\nprecision = 14\r\nregister_argc_argv = Off\r\nregister_globals = Off\r\nreport_memleaks = On\r\nsendmail_path = "/usr/sbin/sendmail -t -i -f {CUSTOMER_EMAIL}"\r\nsession.auto_start = 0\r\nsession.bug_compat_42 = 0\r\nsession.bug_compat_warn = 1\r\nsession.cache_expire = 180\r\nsession.cache_limiter = nocache\r\nsession.cookie_domain =\r\nsession.cookie_lifetime = 0\r\nsession.cookie_path = /\r\nsession.entropy_file = /dev/urandom\r\nsession.entropy_length = 16\r\nsession.gc_divisor = 1000\r\nsession.gc_maxlifetime = 1440\r\nsession.gc_probability = 1\r\nsession.name = PHPSESSID\r\nsession.referer_check =\r\nsession.save_handler = files\r\nsession.save_path = "{TMP_DIR}"\r\nsession.serialize_handler = php\r\nsession.use_cookies = 1\r\nsession.use_trans_sid = 0\r\nshort_open_tag = On\r\nsuhosin.mail.protect = 1\r\nsuhosin.simulation = Off\r\ntrack_errors = Off\r\nupload_max_filesize = 32M\r\nupload_tmp_dir = "{TMP_DIR}"\r\nvariables_order = "GPCS"\r\n'),
-(2, 'Froxlor Vhost Config', '/usr/bin/php-cgi', 'php', '-1', '-1', 'allow_call_time_pass_reference = Off\r\nallow_url_fopen = On\r\nasp_tags = Off\r\ndisable_classes =\r\ndisable_functions = curl_multi_exec,exec,parse_ini_file,passthru,popen,proc_close,proc_get_status,proc_nice,proc_open,proc_terminate,shell_exec,show_source,system\r\ndisplay_errors = Off\r\ndisplay_startup_errors = Off\r\nenable_dl = Off\r\nerror_reporting = E_ALL & ~E_NOTICE\r\nexpose_php = Off\r\nfile_uploads = On\r\ncgi.force_redirect = 1\r\ngpc_order = "GPC"\r\nhtml_errors = Off\r\nignore_repeated_errors = Off\r\nignore_repeated_source = Off\r\ninclude_path = ".:{PEAR_DIR}"\r\nlog_errors = On\r\nlog_errors_max_len = 1024\r\nmagic_quotes_gpc = Off\r\nmagic_quotes_runtime = Off\r\nmagic_quotes_sybase = Off\r\nmax_execution_time = 60\r\nmax_input_time = 60\r\nmemory_limit = 16M\r\nnoutput_buffering = 4096\r\npost_max_size = 16M\r\nprecision = 14\r\nregister_argc_argv = Off\r\nregister_globals = Off\r\nreport_memleaks = On\r\nsendmail_path = "/usr/sbin/sendmail -t -i -f {CUSTOMER_EMAIL}"\r\nsession.auto_start = 0\r\nsession.bug_compat_42 = 0\r\nsession.bug_compat_warn = 1\r\nsession.cache_expire = 180\r\nsession.cache_limiter = nocache\r\nsession.cookie_domain =\r\nsession.cookie_lifetime = 0\r\nsession.cookie_path = /\r\nsession.entropy_file = /dev/urandom\r\nsession.entropy_length = 16\r\nsession.gc_divisor = 1000\r\nsession.gc_maxlifetime = 1440\r\nsession.gc_probability = 1\r\nsession.name = PHPSESSID\r\nsession.referer_check =\r\nsession.save_handler = files\r\nsession.save_path = "{TMP_DIR}"\r\nsession.serialize_handler = php\r\nsession.use_cookies = 1\r\nsession.use_trans_sid = 0\r\nshort_open_tag = On\r\nsuhosin.mail.protect = 1\r\nsuhosin.simulation = Off\r\ntrack_errors = Off\r\nupload_max_filesize = 32M\r\nupload_tmp_dir = "{TMP_DIR}"\r\nvariables_order = "GPCS"\r\n');
+(1, 'Default Config', '/usr/bin/php-cgi', 'php', '-1', '-1', 'allow_call_time_pass_reference = Off\r\nallow_url_fopen = Off\r\nasp_tags = Off\r\ndisable_classes =\r\ndisable_functions = curl_exec,curl_multi_exec,exec,parse_ini_file,passthru,popen,proc_close,proc_get_status,proc_nice,proc_open,proc_terminate,shell_exec,show_source,system\r\ndisplay_errors = Off\r\ndisplay_startup_errors = Off\r\nenable_dl = Off\r\nerror_reporting = E_ALL & ~E_NOTICE\r\nexpose_php = Off\r\nfile_uploads = On\r\ncgi.force_redirect = 1\r\ngpc_order = "GPC"\r\nhtml_errors = Off\r\nignore_repeated_errors = Off\r\nignore_repeated_source = Off\r\ninclude_path = ".:{PEAR_DIR}"\r\nlog_errors = On\r\nlog_errors_max_len = 1024\r\nmagic_quotes_gpc = Off\r\nmagic_quotes_runtime = Off\r\nmagic_quotes_sybase = Off\r\nmax_execution_time = 30\r\nmax_input_time = 60\r\nmemory_limit = 128\r\n{OPEN_BASEDIR_C}open_basedir = "{OPEN_BASEDIR}"\r\noutput_buffering = 4096\r\npost_max_size = 16M\r\nprecision = 14\r\nregister_argc_argv = Off\r\nregister_globals = Off\r\nreport_memleaks = On\r\nsendmail_path = "/usr/sbin/sendmail -t -i -f {CUSTOMER_EMAIL}"\r\nsession.auto_start = 0\r\nsession.bug_compat_42 = 0\r\nsession.bug_compat_warn = 1\r\nsession.cache_expire = 180\r\nsession.cache_limiter = nocache\r\nsession.cookie_domain =\r\nsession.cookie_lifetime = 0\r\nsession.cookie_path = /\r\nsession.entropy_file = /dev/urandom\r\nsession.entropy_length = 16\r\nsession.gc_divisor = 1000\r\nsession.gc_maxlifetime = 1440\r\nsession.gc_probability = 1\r\nsession.name = PHPSESSID\r\nsession.referer_check =\r\nsession.save_handler = files\r\nsession.save_path = "{TMP_DIR}"\r\nsession.serialize_handler = php\r\nsession.use_cookies = 1\r\nsession.use_trans_sid = 0\r\nshort_open_tag = On\r\nsuhosin.mail.protect = 1\r\nsuhosin.simulation = Off\r\ntrack_errors = Off\r\nupload_max_filesize = 32M\r\nupload_tmp_dir = "{TMP_DIR}"\r\nvariables_order = "GPCS"\r\n;mail.add_x_header = On\r\n;mail.log = "/var/log/phpmail.log"\r\n'),
+(2, 'Froxlor Vhost Config', '/usr/bin/php-cgi', 'php', '-1', '-1', 'allow_call_time_pass_reference = Off\r\nallow_url_fopen = On\r\nasp_tags = Off\r\ndisable_classes =\r\ndisable_functions = curl_multi_exec,exec,parse_ini_file,passthru,popen,proc_close,proc_get_status,proc_nice,proc_open,proc_terminate,shell_exec,show_source,system\r\ndisplay_errors = Off\r\ndisplay_startup_errors = Off\r\nenable_dl = Off\r\nerror_reporting = E_ALL & ~E_NOTICE\r\nexpose_php = Off\r\nfile_uploads = On\r\ncgi.force_redirect = 1\r\ngpc_order = "GPC"\r\nhtml_errors = Off\r\nignore_repeated_errors = Off\r\nignore_repeated_source = Off\r\ninclude_path = ".:{PEAR_DIR}"\r\nlog_errors = On\r\nlog_errors_max_len = 1024\r\nmagic_quotes_gpc = Off\r\nmagic_quotes_runtime = Off\r\nmagic_quotes_sybase = Off\r\nmax_execution_time = 60\r\nmax_input_time = 60\r\nmemory_limit = 128M\r\nnoutput_buffering = 4096\r\npost_max_size = 16M\r\nprecision = 14\r\nregister_argc_argv = Off\r\nregister_globals = Off\r\nreport_memleaks = On\r\nsendmail_path = "/usr/sbin/sendmail -t -i -f {CUSTOMER_EMAIL}"\r\nsession.auto_start = 0\r\nsession.bug_compat_42 = 0\r\nsession.bug_compat_warn = 1\r\nsession.cache_expire = 180\r\nsession.cache_limiter = nocache\r\nsession.cookie_domain =\r\nsession.cookie_lifetime = 0\r\nsession.cookie_path = /\r\nsession.entropy_file = /dev/urandom\r\nsession.entropy_length = 16\r\nsession.gc_divisor = 1000\r\nsession.gc_maxlifetime = 1440\r\nsession.gc_probability = 1\r\nsession.name = PHPSESSID\r\nsession.referer_check =\r\nsession.save_handler = files\r\nsession.save_path = "{TMP_DIR}"\r\nsession.serialize_handler = php\r\nsession.use_cookies = 1\r\nsession.use_trans_sid = 0\r\nshort_open_tag = On\r\nsuhosin.mail.protect = 1\r\nsuhosin.simulation = Off\r\ntrack_errors = Off\r\nupload_max_filesize = 32M\r\nupload_tmp_dir = "{TMP_DIR}"\r\nvariables_order = "GPCS"\r\n;mail.add_x_header = On\r\n;mail.log = "/var/log/phpmail.log"\r\n');
 
 
 DROP TABLE IF EXISTS `cronjobs_run`;
@@ -810,10 +818,10 @@ DROP TABLE IF EXISTS `domain_ssl_settings`;
 CREATE TABLE IF NOT EXISTS `domain_ssl_settings` (
   `id` int(5) NOT NULL auto_increment,
   `domainid` int(11) NOT NULL,
-  `ssl_cert_file` text NOT NULL,
-  `ssl_key_file` text NOT NULL,
-  `ssl_ca_file` text NOT NULL,
-  `ssl_cert_chainfile` text NOT NULL,
+  `ssl_cert_file` mediumtext NOT NULL,
+  `ssl_key_file` mediumtext NOT NULL,
+  `ssl_ca_file` mediumtext,
+  `ssl_cert_chainfile` mediumtext,
   PRIMARY KEY  (`id`)
 ) ENGINE=MyISAM CHARSET=utf8 COLLATE=utf8_general_ci;
 

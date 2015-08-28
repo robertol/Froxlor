@@ -54,6 +54,13 @@ function getFormFieldOutput($fieldname, $fielddata) {
 			}
 		}
 
+		// visible = Settings::Get('phpfpm.enabled') for example would result in false if not enabled
+		// and therefore not shown as intended. Only check if do_show is still true as it might
+		// be false due to websrv_avail
+		if (isset($fielddata['visible']) && $do_show) {
+			$do_show = $fielddata['visible'];
+		}
+
 		if ($do_show) {
 			$returnvalue = call_user_func('getFormFieldOutput' . ucfirst($fielddata['type']), $fieldname, $fielddata);
 		}

@@ -231,7 +231,8 @@ $lng['error']['destinationnonexist'] = 'Veuillez écrire votre adresse de renvoi
 $lng['error']['destinationalreadyexistasmail'] = 'Le renvoi vers l\'adresse "%s" existe déjà comme adresse active.';
 $lng['error']['destinationalreadyexist'] = 'Il existe déjà une réexpédition vers l\'adresse "%s".';
 $lng['error']['destinationiswrong'] = 'L\'adresse "%s" contient des signes invalides ou est incomplète.';
-$lng['error']['loginnameissystemaccount'] = 'Vous ne pouvez pas créer un compte identique au compte système, veuillez réessayer avec un autre nom.';
+//  $lng['error']['loginnameissystemaccount'] = 'Vous ne pouvez pas créer un compte identique au compte système, veuillez réessayer avec un autre nom.';
+$lng['error']['loginnameissystemaccount'] = 'Vous ne pouvez pas créer de compte ressemblant aux comptes système (ex : "%s"). Veuillez entrer un autre nom de compte.';
 
 /**
  * Questions
@@ -301,9 +302,6 @@ $lng['admin']['deactivated_user'] = 'Désactiver l\'utilisateur';
 $lng['admin']['sendpassword'] = 'Envoyer le mot de passe';
 $lng['admin']['ownvhostsettings'] = 'Configuration spéciale du vHost';
 $lng['admin']['configfiles']['serverconfiguration'] = 'Exemple de configuration';
-$lng['admin']['configfiles']['files'] = '<b>Fichiers de configuration :</b> Veuillez créer ou modifier les fichiers suivants avec le contenu ci-dessous.<br /><br /><b>IMPORTANT :</b> Le mot de passe MySQL n\'est pas donné dans les informations ci-dessous<br />pour des raisons de sécurité. Veuillez donc remplacer les "<b>MYSQL_PASSWORD</b>"<br />manuellement avec le mot de passe correspondant. En cas d\'oubli, vous pouvez le retrouver dans<br />le fichier "<b>lib/userdata.inc.php</b>".';
-$lng['admin']['configfiles']['commands'] = '<b>Commandes :</b> Veuillez exécuter les commandes ci-dessous dans le shell.';
-$lng['admin']['configfiles']['restart'] = '<b>Redémarrage :</b> Veuillez exécuter les commandes ci-dessous pour<br />prendre en compte les changements.';
 $lng['admin']['templates']['templates'] = 'Modèles';
 $lng['admin']['templates']['template_add'] = 'Ajouter un modèle';
 $lng['admin']['templates']['template_edit'] = 'Modifier un modèle';
@@ -457,7 +455,6 @@ $lng['serversettings']['phpappendopenbasedir']['description'] = 'Liste de dossie
 
 // CHANGED IN 1.2.15-rc1
 
-$lng['error']['loginnameissystemaccount'] = 'Vous ne pouvez pas créer de compte ressemblant aux comptes système (ex : "%s"). Veuillez entrer un autre nom de compte.';
 $lng['error']['youcantdeleteyourself'] = 'Vous ne pouvez pas supprimer votre propre compte pour des raisons évidente de sécurité ...';
 $lng['error']['youcanteditallfieldsofyourself'] = 'Note : Vous ne pouvez pas éditer tous les champs de votre propre compte pour des raisons de sécurité.';
 
@@ -587,7 +584,8 @@ $lng['ticket']['ticket_editcateory'] = 'Editer la catégorie';
 $lng['ticket']['ticket_view'] = 'Voir l\'historique du billet';
 $lng['ticket']['ticketcount'] = 'Billets';
 $lng['ticket']['ticket_answers'] = 'Réponses';
-$lng['ticket']['lastchange'] = 'Dernière action';
+// $lng['ticket']['lastchange'] = 'Dernière action';
+$lng['ticket']['lastchange'] = 'Dernier changement';
 $lng['ticket']['subject'] = 'Sujet';
 $lng['ticket']['status'] = 'Etat';
 $lng['ticket']['lastreplier'] = 'Dernière réponse de';
@@ -595,7 +593,6 @@ $lng['ticket']['priority'] = 'Priorité';
 $lng['ticket']['low'] = 'Basse';
 $lng['ticket']['normal'] = 'Normale';
 $lng['ticket']['high'] = 'Haute';
-$lng['ticket']['lastchange'] = 'Dernier changement';
 $lng['ticket']['lastchange_from'] = 'Depuis (jj.mm.aaaa)';
 $lng['ticket']['lastchange_to'] = 'Jusqu\'au (jj.mm.aaaa)';
 $lng['ticket']['category'] = 'Catégorie';
@@ -848,8 +845,8 @@ $lng['login']['presend'] = 'Réinitialiser le mot de passe';
 $lng['login']['email'] = 'Adresse e-mail';
 $lng['login']['remind'] = 'Réinitialiser mon mot de passe';
 $lng['login']['usernotfound'] = 'Erreur : utilisateur inconnu !';
-$lng['pwdreminder']['subject'] = 'Froxlor - réinitialisation du mot de passe';
-$lng['pwdreminder']['body'] = 'Bonjour %s,\n\nVotre mot de passe pour Froxlor a été réinitialiser !\nLe nouveau mot de passe est : %p\n\nCordialement,\nL\'équipe Froxlor.';
+$lng['mails']['password_reset']['subject'] = 'réinitialisation du mot de passe';
+$lng['mails']['password_reset']['mailbody'] = 'Bonjour {USERNAME},\n\nVotre mot de passe pour Froxlor a été réinitialiser !\nLe nouveau mot de passe est : {LINK}\n\nCordialement,\nL\'équipe Froxlor.';
 $lng['pwdreminder']['success'] = 'Mot de passe correctement réinitialiser.<br />Vous devriez recevoir un e-mail avec votre nouveau mot de passe d\'ici quelques minutes.';
 
 // ADDED IN 1.2.19-svn18

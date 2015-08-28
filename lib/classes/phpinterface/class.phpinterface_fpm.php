@@ -35,55 +35,80 @@ class phpinterface_fpm {
 
 	/**
 	 * defines what can be used for pool-config from php.ini
+	 * Mostly taken from http://php.net/manual/en/ini.list.php
+	 *
 	 * @var array
 	*/
 	private $_ini = array(
 			'php_value' => array(
-					'error_reporting',
-					'max_execution_time',
-					'include_path',
-					'upload_max_filesize',
-					'log_errors_max_len'
+				'auto_append_file',
+				'auto_prepend_file',
+				'date.timezone',
+				'default_charset',
+				'error_reporting',
+				'include_path',
+				'log_errors_max_len',
+				'mail.log',
+				'max_execution_time',
+				'session.cookie_domain',
+				'session.cookie_lifetime',
+				'session.cookie_path',
+				'session.name',
+				'session.serialize_handler',
+				'upload_max_filesize',
+				'xmlrpc_error_number',
+				'session.auto_start',
 			),
 			'php_flag' => array(
-					'short_open_tag',
-					'asp_tags',
-					'display_errors',
-					'display_startup_errors',
-					'log_errors',
-					'track_errors',
-					'html_errors',
-					'magic_quotes_gpc',
-					'magic_quotes_runtime',
-					'magic_quotes_sybase'
+				'asp_tags',
+				'display_errors',
+				'display_startup_errors',
+				'html_errors',
+				'log_errors',
+				'magic_quotes_gpc',
+				'magic_quotes_runtime',
+				'magic_quotes_sybase',
+				'mail.add_x_header',
+				'session.cookie_secure',
+				'session.use_cookies',
+				'short_open_tag',
+				'track_errors',
+				'xmlrpc_errors'
 			),
 			'php_admin_value' => array(
-					'open_basedir',
-					'precision',
-					'output_buffering',
-					'disable_functions',
-					'max_input_time',
-					'memory_limit',
-					'post_max_size',
-					'variables_order',
-					'gpc_order',
-					'date.timezone',
-					'sendmail_path',
-					'session.gc_divisor',
-					'session.gc_probability'
+				'cgi.redirect_status_env',
+				'date.timezone',
+				'disable_classes',
+				'disable_functions',
+				'error_log',
+				'gpc_order',
+				'max_input_time',
+				'max_input_vars',
+				'memory_limit',
+				'open_basedir',
+				'output_buffering',
+				'post_max_size',
+				'precision',
+				'sendmail_path',
+				'session.gc_divisor',
+				'session.gc_probability',
+				'variables_order'
 			),
 			'php_admin_flag' => array(
-					'allow_call_time_pass_reference',
-					'allow_url_fopen',
-					'cgi.force_redirect',
-					'enable_dl',
-					'expose_php',
-					'ignore_repeated_errors',
-					'ignore_repeated_source',
-					'report_memleaks',
-					'register_argc_argv',
-					'file_uploads',
-					'allow_url_fopen'
+				'allow_call_time_pass_reference',
+				'allow_url_fopen',
+				'allow_url_include',
+				'auto_detect_line_endings',
+				'cgi.fix_pathinfo',
+				'cgi.force_redirect',
+				'enable_dl',
+				'expose_php',
+				'file_uploads',
+				'ignore_repeated_errors',
+				'ignore_repeated_source',
+				'log_errors',
+				'register_argc_argv',
+				'report_memleaks'
 			)
 	);
 
@@ -126,7 +151,8 @@ class phpinterface_fpm {
 				$fpm_config.= 'listen.owner = '.$this->_domain['loginname']."\n";
 				$fpm_config.= 'listen.group = '.$this->_domain['loginname']."\n";
 			}
-			$fpm_config.= 'listen.mode = 0666'."\n";
+			// see #1418 why this is 0660
+			$fpm_config.= 'listen.mode = 0660'."\n";
 
 			if ($this->_domain['loginname'] == 'froxlor.panel') {
 				$fpm_config.= 'user = '.$this->_domain['guid']."\n";
@@ -140,6 +166,13 @@ class phpinterface_fpm {
 			$fpm_config.= 'pm.max_children = '.$fpm_children."\n";
 
 			if ($fpm_pm == 'dynamic') {
+				// honor max_children
+				if ($fpm_children < $fpm_min_spare_servers) {
+					$fpm_min_spare_servers = $fpm_children;
+				}
+				if ($fpm_children < $fpm_max_spare_servers) {
+					$fpm_max_spare_servers = $fpm_children;
+				}
 				// failsafe, refs #955
 				if ($fpm_start_servers < $fpm_min_spare_servers) {
 					$fpm_start_servers = $fpm_min_spare_servers;
@@ -218,7 +251,7 @@ class phpinterface_fpm {
 
 			$php_ini_variables = array(
 					'SAFE_MODE' => 'Off', // keep this for compatibility, just in case
-					'PEAR_DIR' => Settings::Get('system.mod_fcgid_peardir'),
+					'PEAR_DIR' => Settings::Get('phpfpm.peardir'),
 					'TMP_DIR' => $this->getTempDir(),
 					'CUSTOMER_EMAIL' => $this->_domain['email'],
 					'ADMIN_EMAIL' => $admin['email'],
@@ -237,7 +270,7 @@ class phpinterface_fpm {
 				$is = explode("=", $inisection);
 				foreach ($this->_ini as $sec => $possibles) {
 					if (in_array(trim($is[0]), $possibles)) {
-						// check explictly for open_basedir
+						// check explicitly for open_basedir
 						if (trim($is[0]) == 'open_basedir' && $openbasedir == '') {
 							continue;
 						}

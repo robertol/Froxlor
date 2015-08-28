@@ -17,7 +17,9 @@
  *
  */
 
-class apache {
+require_once(dirname(__FILE__).'/../classes/class.HttpConfigBase.php');
+
+class apache extends HttpConfigBase {
 	private $logger = false;
 	private $debugHandler = false;
 	private $idnaConvert = false;
@@ -42,7 +44,6 @@ class apache {
 		$this->logger = $logger;
 		$this->debugHandler = $debugHandler;
 		$this->idnaConvert = $idnaConvert;
-
 	}
 
 
@@ -230,7 +231,12 @@ class apache {
 						$this->virtualhosts_data[$vhosts_filename].= '    </FilesMatch>' . "\n";
 						// >=apache-2.4 enabled?
 						if (Settings::Get('system.apache24') == '1') {
-							$this->virtualhosts_data[$vhosts_filename].= '    Require all granted' . "\n";
+							$mypath_dir = new frxDirectory($mypath);
+							// only create the require all granted if there is not active directory-protection
+							// for this path, as this would be the first require and therefore grant all access
+							if ($mypath_dir->isUserProtected() == false) {
+								$this->virtualhosts_data[$vhosts_filename].= '    Require all granted' . "\n";
+							}
 						} else {
 							$this->virtualhosts_data[$vhosts_filename].= '    Order allow,deny' . "\n";
 							$this->virtualhosts_data[$vhosts_filename].= '    allow from all' . "\n";
@@ -259,23 +265,39 @@ class apache {
 					if ($row_ipsandports['ssl']) {
 						$srvName = substr(md5($ipport),0,4).'.ssl-fpm.external';
 					}
-					$this->virtualhosts_data[$vhosts_filename] .= '  FastCgiExternalServer ' . $php->getInterface()->getAliasConfigDir() . $srvName .' -socket ' . $php->getInterface()->getSocketFile() . ' -idle-timeout ' . Settings::Get('phpfpm.idle_timeout') . "\n";
-					$this->virtualhosts_data[$vhosts_filename] .= '  <Directory "' . $mypath . '">' . "\n";
-					$file_extensions = explode(' ', $phpconfig['file_extensions']);
-					$this->virtualhosts_data[$vhosts_filename] .= '   <FilesMatch "\.(' . implode('|', $file_extensions) . ')$">' . "\n";
-					$this->virtualhosts_data[$vhosts_filename] .= '     AddHandler php5-fastcgi .php'. "\n";
-					$this->virtualhosts_data[$vhosts_filename] .= '     Action php5-fastcgi /fastcgiphp' . "\n";
-					$this->virtualhosts_data[$vhosts_filename].= '      Options +ExecCGI' . "\n";
-					$this->virtualhosts_data[$vhosts_filename].= '    </FilesMatch>' . "\n";
-					// >=apache-2.4 enabled?
-					if (Settings::Get('system.apache24') == '1') {
-						$this->virtualhosts_data[$vhosts_filename] .= '    Require all granted' . "\n";
+					
+					// mod_proxy stuff for apache-2.4
+					if (Settings::Get('system.apache24') == '1'
+							&& Settings::Get('phpfpm.use_mod_proxy') == '1'
+					) {
+						$this->virtualhosts_data[$vhosts_filename] .= '  <FilesMatch \.php$>'. "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '  SetHandler proxy:unix:' . $php->getInterface()->getSocketFile()  . '|fcgi://localhost'. "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '  </FilesMatch>' . "\n";
+					
 					} else {
-						$this->virtualhosts_data[$vhosts_filename] .= '    Order allow,deny' . "\n";
-						$this->virtualhosts_data[$vhosts_filename] .= '    allow from all' . "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '  FastCgiExternalServer ' . $php->getInterface()->getAliasConfigDir() . $srvName .' -socket ' . $php->getInterface()->getSocketFile() . ' -idle-timeout ' . Settings::Get('phpfpm.idle_timeout') . "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '  <Directory "' . $mypath . '">' . "\n";
+						$file_extensions = explode(' ', $phpconfig['file_extensions']);
+						$this->virtualhosts_data[$vhosts_filename] .= '   <FilesMatch "\.(' . implode('|', $file_extensions) . ')$">' . "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '     AddHandler php5-fastcgi .php'. "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '     Action php5-fastcgi /fastcgiphp' . "\n";
+						$this->virtualhosts_data[$vhosts_filename].= '      Options +ExecCGI' . "\n";
+						$this->virtualhosts_data[$vhosts_filename].= '    </FilesMatch>' . "\n";
+						// >=apache-2.4 enabled?
+						if (Settings::Get('system.apache24') == '1') {
+							$mypath_dir = new frxDirectory($mypath);
+							// only create the require all granted if there is not active directory-protection
+							// for this path, as this would be the first require and therefore grant all access
+							if ($mypath_dir->isUserProtected() == false) {
+								$this->virtualhosts_data[$vhosts_filename] .= '    Require all granted' . "\n";
+							}
+						} else {
+							$this->virtualhosts_data[$vhosts_filename] .= '    Order allow,deny' . "\n";
+							$this->virtualhosts_data[$vhosts_filename] .= '    allow from all' . "\n";
+						}
+						$this->virtualhosts_data[$vhosts_filename] .= '  </Directory>' . "\n";
+						$this->virtualhosts_data[$vhosts_filename] .= '  Alias /fastcgiphp ' . $php->getInterface()->getAliasConfigDir() . $srvName . "\n";
 					}
-					$this->virtualhosts_data[$vhosts_filename] .= '  </Directory>' . "\n";
-					$this->virtualhosts_data[$vhosts_filename] .= '  Alias /fastcgiphp ' . $php->getInterface()->getAliasConfigDir() . $srvName . "\n";
 				}
 
 				/**
@@ -294,7 +316,12 @@ class apache {
 				 */
 
 				if ($row_ipsandports['specialsettings'] != '') {
-					$this->virtualhosts_data[$vhosts_filename] .= $row_ipsandports['specialsettings'] . "\n";
+					$this->virtualhosts_data[$vhosts_filename] .= $this->processSpecialConfigTemplate(
+							$row_ipsandports['specialsettings'],
+							$domain,
+							$row_ipsandports['ip'],
+							$row_ipsandports['port'],
+							$row_ipsandports['ssl'] == '1') . "\n";
 				}
 
 				if ($row_ipsandports['ssl'] == '1' && Settings::Get('system.use_ssl') == '1') {
@@ -316,25 +343,52 @@ class apache {
 					}
 
 					if ($row_ipsandports['ssl_cert_file'] != '') {
-						$this->virtualhosts_data[$vhosts_filename] .= ' SSLEngine On' . "\n";
-						// this makes it more secure, thx to Marcel (08/2013)
-						$this->virtualhosts_data[$vhosts_filename] .= ' SSLHonorCipherOrder On' . "\n";
-						$this->virtualhosts_data[$vhosts_filename] .= ' SSLCipherSuite ' . Settings::Get('system.ssl_cipher_list') . "\n";
-						$this->virtualhosts_data[$vhosts_filename] .= ' SSLVerifyDepth 10' . "\n";
-						$this->virtualhosts_data[$vhosts_filename] .= ' SSLCertificateFile ' . makeCorrectFile($row_ipsandports['ssl_cert_file']) . "\n";
 
-						if ($row_ipsandports['ssl_key_file'] != '') {
-							$this->virtualhosts_data[$vhosts_filename] .= ' SSLCertificateKeyFile ' . makeCorrectFile($row_ipsandports['ssl_key_file']) . "\n";
-						}
+					    // check for existence, #1485
+					    if (!file_exists($row_ipsandports['ssl_cert_file'])) {
+					        $this->logger->logAction(CRON_ACTION, LOG_ERROR, $ipport . ' :: certificate file "'.$row_ipsandports['ssl_cert_file'].'" does not exist! Cannot create ssl-directives');
+					        echo $ipport . ' :: certificate file "'.$row_ipsandports['ssl_cert_file'].'" does not exist! Cannot create SSL-directives'."\n";
+					    } else {
 
-						if ($row_ipsandports['ssl_ca_file'] != '') {
-							$this->virtualhosts_data[$vhosts_filename] .= ' SSLCACertificateFile ' . makeCorrectFile($row_ipsandports['ssl_ca_file']) . "\n";
-						}
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLEngine On' . "\n";
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLProtocol ALL -SSLv2 -SSLv3' . "\n";
+                            // this makes it more secure, thx to Marcel (08/2013)
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLHonorCipherOrder On' . "\n";
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLCipherSuite ' . Settings::Get('system.ssl_cipher_list') . "\n";
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLVerifyDepth 10' . "\n";
+                            $this->virtualhosts_data[$vhosts_filename] .= ' SSLCertificateFile ' . makeCorrectFile($row_ipsandports['ssl_cert_file']) . "\n";
 
-						// #418
-						if ($row_ipsandports['ssl_cert_chainfile'] != '') {
-							$this->virtualhosts_data[$vhosts_filename] .= '  SSLCertificateChainFile ' . makeCorrectFile($row_ipsandports['ssl_cert_chainfile']) . "\n";
-						}
+                            if ($row_ipsandports['ssl_key_file'] != '') {
+                                // check for existence, #1485
+                                if (!file_exists($row_ipsandports['ssl_key_file'])) {
+                                    $this->logger->logAction(CRON_ACTION, LOG_ERROR, $ipport . ' :: certificate key file "'.$row_ipsandports['ssl_key_file'].'" does not exist! Cannot create ssl-directives');
+                                    echo $ipport . ' :: certificate key file "'.$row_ipsandports['ssl_key_file'].'" does not exist! SSL-directives might not be working'."\n";
+                                } else {
+                                    $this->virtualhosts_data[$vhosts_filename] .= ' SSLCertificateKeyFile ' . makeCorrectFile($row_ipsandports['ssl_key_file']) . "\n";
+                                }
+                            }
+
+                            if ($row_ipsandports['ssl_ca_file'] != '') {
+                                // check for existence, #1485
+                                if (!file_exists($row_ipsandports['ssl_ca_file'])) {
+                                    $this->logger->logAction(CRON_ACTION, LOG_ERROR, $ipport . ' :: certificate CA file "'.$row_ipsandports['ssl_ca_file'].'" does not exist! Cannot create ssl-directives');
+                                    echo $ipport . ' :: certificate CA file "'.$row_ipsandports['ssl_ca_file'].'" does not exist! SSL-directives might not be working'."\n";
+                                } else {
+                                    $this->virtualhosts_data[$vhosts_filename] .= ' SSLCACertificateFile ' . makeCorrectFile($row_ipsandports['ssl_ca_file']) . "\n";
+                                }
+                            }
+
+                            // #418
+                            if ($row_ipsandports['ssl_cert_chainfile'] != '') {
+                                // check for existence, #1485
+                                if (!file_exists($row_ipsandports['ssl_cert_chainfile'])) {
+                                    $this->logger->logAction(CRON_ACTION, LOG_ERROR, $ipport . ' :: certificate chain file "'.$row_ipsandports['ssl_cert_chainfile'].'" does not exist! Cannot create ssl-directives');
+                                    echo $ipport . ' :: certificate chain file "'.$row_ipsandports['ssl_cert_chainfile'].'" does not exist! SSL-directives might not be working'."\n";
+                                } else {
+                                    $this->virtualhosts_data[$vhosts_filename] .= '  SSLCertificateChainFile ' . makeCorrectFile($row_ipsandports['ssl_cert_chainfile']) . "\n";
+                                }
+                            }
+					    }
 					}
 				}
 
@@ -383,6 +437,16 @@ class apache {
 		} else {
 			$php_options_text .= '  # PHP is disabled for this vHost' . "\n";
 			$php_options_text .= '  php_flag engine off' . "\n";
+		}
+
+		/**
+		 * check for apache-itk-support, #1400
+		 * why is this here? Because it only works with mod_php
+		 */
+		if (Settings::get('system.apacheitksupport') == 1) {
+		    $php_options_text .= '  <IfModule mpm_itk_module>' . "\n";
+		    $php_options_text .= '    AssignUserID '. $domain['loginname'] . ' ' . $domain['loginname'] . "\n";
+		    $php_options_text .= '  </IfModule>' . "\n";
 		}
 
 		return $php_options_text;
@@ -578,14 +642,15 @@ class apache {
 			&& ((int)$domain['ismainbutsubto'] == 0
 				|| domainMainToSubExists($domain['ismainbutsubto']) == false)
 		) {
-			$vhost_no = '22';
+			$vhost_no = '35';
 		} elseif ((int)$domain['parentdomainid'] == 0
 			&& isCustomerStdSubdomain((int)$domain['id']) == false
 			&& (int)$domain['ismainbutsubto'] > 0
 		) {
-			$vhost_no = '21';
+			$vhost_no = '30';
 		} else {
-			$vhost_no = '20';
+			// number of dots in a domain specifies it's position (and depth of subdomain) starting at 29 going downwards on higher depth
+			$vhost_no = (string)(30 - substr_count($domain['domain'], ".") + 1);
 		}
 
 		if ($ssl_vhost === true) {
@@ -596,7 +661,6 @@ class apache {
 
 		return $vhost_filename;
 	}
-
 
 	/**
 	 * We compose the virtualhost entry for one domain
@@ -652,7 +716,12 @@ class apache {
 			}
 
 			if ($ipandport['default_vhostconf_domain'] != '') {
-				$_vhost_content .= $ipandport['default_vhostconf_domain'] . "\n";
+				$_vhost_content .= $this->processSpecialConfigTemplate(
+										$ipandport['default_vhostconf_domain'],
+										$domain,
+										$domain['ip'],
+										$domain['port'],
+										$ssl_vhost) . "\n";
 			}
 			$ipportlist .= $ipport;
 		}
@@ -708,6 +777,7 @@ class apache {
 
 			if ($domain['ssl_cert_file'] != '') {
 				$vhost_content .= '  SSLEngine On' . "\n";
+				$vhost_content .= '  SSLProtocol ALL -SSLv2 -SSLv3' . "\n";
 				// this makes it more secure, thx to Marcel (08/2013)
 				$vhost_content .= '  SSLHonorCipherOrder On' . "\n";
 				$vhost_content .= '  SSLCipherSuite ' . Settings::Get('system.ssl_cipher_list') . "\n";
@@ -735,17 +805,18 @@ class apache {
 			$code = getDomainRedirectCode($domain['id']);
 			$modrew_red = '';
 			if ($code != '') {
-				$modrew_red = '[R='. $code . ';L]';
+				$modrew_red = '[R='. $code . ';L,NE]';
 			}
 
 			// redirect everything, not only root-directory, #541
 			$vhost_content .= '  <IfModule mod_rewrite.c>'."\n";
 			$vhost_content .= '    RewriteEngine On' . "\n";
-			$vhost_content .= '    RewriteCond %{HTTPS} off' . "\n";
+			if (!$ssl_vhost) {
+				$vhost_content .= '    RewriteCond %{HTTPS} off' . "\n";
+			}
 			$vhost_content .= '    RewriteRule ^/(.*) '. $corrected_docroot.'$1 ' . $modrew_red . "\n";
 			$vhost_content .= '  </IfModule>' . "\n";
 
-			$code = getDomainRedirectCode($domain['id']);
 			$vhost_content .= '  Redirect '.$code.' / ' . $this->idnaConvert->encode($domain['documentroot']) . "\n";
 
 		} else {
@@ -759,7 +830,12 @@ class apache {
 			$vhost_content .= $this->getLogfiles($domain);
 
 			if ($domain['specialsettings'] != '') {
-				$vhost_content .= $domain['specialsettings'] . "\n";
+				$vhost_content .= $this->processSpecialConfigTemplate(
+						$domain['specialsettings'],
+						$domain,
+						$domain['ip'],
+						$domain['port'],
+						$ssl_vhost) . "\n";
 			}
 
 			if ($_vhost_content != '') {
@@ -767,7 +843,12 @@ class apache {
 			}
 
 			if (Settings::Get('system.default_vhostconf') != '') {
-				$vhost_content .= Settings::Get('system.default_vhostconf') . "\n";
+				$vhost_content .= $this->processSpecialConfigTemplate(
+						Settings::Get('system.default_vhostconf'),
+						$domain,
+						$domain['ip'],
+						$domain['port'],
+						$ssl_vhost) . "\n";
 			}
 		}
 
@@ -928,7 +1009,12 @@ class apache {
 					$this->diroptions_data[$diroptions_filename] .= '  AddHandler cgi-script .cgi .pl' . "\n";
 					// >=apache-2.4 enabled?
 					if (Settings::Get('system.apache24') == '1') {
-						$this->diroptions_data[$diroptions_filename] .= '  Require all granted' . "\n";
+						$mypath_dir = new frxDirectory($row_diroptions['path']);
+						// only create the require all granted if there is not active directory-protection
+						// for this path, as this would be the first require and therefore grant all access
+						if ($mypath_dir->isUserProtected() == false) {
+							$this->diroptions_data[$diroptions_filename] .= '  Require all granted' . "\n";
+						}
 					} else {
 						$this->diroptions_data[$diroptions_filename] .= '  Order allow,deny' . "\n";
 						$this->diroptions_data[$diroptions_filename] .= '  Allow from all' . "\n";
@@ -1005,7 +1091,8 @@ class apache {
 		$this->logger->logAction(CRON_ACTION, LOG_INFO, "rebuilding " . Settings::Get('system.apacheconf_diroptions'));
 
 		if (count($this->diroptions_data) > 0) {
-			if (!isConfigDir(Settings::Get('system.apacheconf_diroptions'))) {
+			$optsDir = new frxDirectory(Settings::Get('system.apacheconf_diroptions'));
+			if (!$optsDir->isConfigDir()) {
 				// Save one big file
 				$diroptions_file = '';
 
@@ -1052,7 +1139,8 @@ class apache {
 				umask($umask);
 			}
 
-			if (isConfigDir(Settings::Get('system.apacheconf_htpasswddir'), true)) {
+			$htpasswdDir = new frxDirectory(Settings::Get('system.apacheconf_htpasswddir'));
+			if ($htpasswdDir->isConfigDir(true)) {
 				foreach ($this->htpasswds_data as $htpasswd_filename => $htpasswd_file) {
 					$this->known_htpasswdsfilenames[] = basename($htpasswd_filename);
 					$htpasswd_file_handler = fopen($htpasswd_filename, 'w');
@@ -1071,14 +1159,15 @@ class apache {
 		$this->logger->logAction(CRON_ACTION, LOG_INFO, "rebuilding " . Settings::Get('system.apacheconf_vhost'));
 
 		if (count($this->virtualhosts_data) > 0) {
-			if (!isConfigDir(Settings::Get('system.apacheconf_vhost'))) {
+			$vhostDir = new frxDirectory(Settings::Get('system.apacheconf_vhost'));
+			if (!$vhostDir->isConfigDir()) {
 				// Save one big file
 				$vhosts_file = '';
 
 				// sort by filename so the order is:
-				// 1. subdomains                  20
-				// 2. subdomains as main-domains  21
-				// 3. main-domains                22
+				// 1. subdomains                  x-29
+				// 2. subdomains as main-domains  30
+				// 3. main-domains                35
 				// #437
 				ksort($this->virtualhosts_data);
 

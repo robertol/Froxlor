@@ -33,6 +33,10 @@ class ConfigIO {
 	 * @return null
 	 */
 	public function cleanUp() {
+
+		// old error logs
+		$this->_cleanErrLogs();
+
 		// awstats files
 		$this->_cleanAwstatsFiles();
 
@@ -50,6 +54,17 @@ class ConfigIO {
 
 		// customer-specified ssl-certificates
 		$this->_cleanCustomerSslCerts();
+	}
+
+	private function _cleanErrLogs() {
+
+	    $err_dir = makeCorrectDir(FROXLOR_INSTALL_DIR."/logs/");
+	    if (@is_dir($err_dir)) {
+	        // now get rid of old stuff
+	        //(but append /*.log so we don't delete the directory)
+	        $err_dir.='/*.log';
+	        safe_exec('rm -rf '. makeCorrectFile($err_dir));
+	    }
 	}
 
 	/**
@@ -89,8 +104,13 @@ class ConfigIO {
 
 		// get directories
 		$configdirs = array();
-		$configdirs[] = makeCorrectDir($this->_getFile('system', 'apacheconf_vhost'));
-		$configdirs[] = makeCorrectDir($this->_getFile('system', 'apacheconf_diroptions'));
+		$dir = $this->_getFile('system', 'apacheconf_vhost');
+		if ($dir !== false)
+			$configdirs[] = makeCorrectDir($dir);
+
+		$dir = $this->_getFile('system', 'apacheconf_diroptions');
+		if ($dir !== false)
+			$configdirs[] = makeCorrectDir($dir);
 
 		// file pattern
 		$pattern = "/^([0-9]){2}_(froxlor|syscp)_(.+)\.conf$/";

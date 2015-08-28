@@ -219,7 +219,7 @@ if ($page == 'overview') {
 							'DB_NAME' => $username,
 							'DB_PASS' => $password,
 							'DB_DESC' => $databasedescription,
-							'DB_SRV' => $sql_root['caption'],
+							'DB_SRV' => $sql_root['host'],
 							'PMA_URI' => $pma
 						);
 
@@ -232,7 +232,7 @@ if ($page == 'overview') {
 						);
 						Database::pexecute($result_stmt, array("adminid" => $userinfo['adminid'], "lang" => $def_language));
 						$result = $result_stmt->fetch(PDO::FETCH_ASSOC);
-						$mail_subject = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['customer']['mysql_add']['infomail_subject']), $replace_arr));
+						$mail_subject = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['mails']['new_database_by_customer']['subject']), $replace_arr));
 
 						$result_stmt = Database::prepare("SELECT `value` FROM `" . TABLE_PANEL_TEMPLATES . "`
 							WHERE `adminid`= :adminid
@@ -242,7 +242,7 @@ if ($page == 'overview') {
 						);
 						Database::pexecute($result_stmt, array("adminid" => $userinfo['adminid'], "lang" => $def_language));
 						$result = $result_stmt->fetch(PDO::FETCH_ASSOC);
-						$mail_body = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['customer']['mysql_add']['infomail_body']['main']), $replace_arr));
+						$mail_body = html_entity_decode(replace_variables((($result['value'] != '') ? $result['value'] : $lng['mails']['new_database_by_customer']['mailbody']), $replace_arr));
 
 						$_mailerror = false;
 						try {
@@ -283,11 +283,8 @@ if ($page == 'overview') {
 				}
 				Database::needRoot(false);
 
-				$mysql_add_data = include_once dirname(__FILE__).'/lib/formfields/customer/mysql/formfield.mysql_add.php';
-				$mysql_add_form = htmlform::genHTMLForm($mysql_add_data);
-
-				$title = $mysql_add_data['mysql_add']['title'];
-				$image = $mysql_add_data['mysql_add']['image'];
+				$mysql_add_data = include_once dirname(__FILE__).'/lib/formfields/customer/formfield.mysql.php';
+				$mysql_add_form = HTMLform2::genHTMLForm($mysql_add_data);
 
 				eval("echo \"" . getTemplate('mysql/mysqls_add') . "\";");
 			}
@@ -355,11 +352,9 @@ if ($page == 'overview') {
 				$sql_root = Database::getSqlData();
 				Database::needRoot(false);
 
-				$mysql_edit_data = include_once dirname(__FILE__).'/lib/formfields/customer/mysql/formfield.mysql_edit.php';
-				$mysql_edit_form = htmlform::genHTMLForm($mysql_edit_data);
-
-				$title = $mysql_edit_data['mysql_edit']['title'];
-				$image = $mysql_edit_data['mysql_edit']['image'];
+				$result['mysql_servers'] = isset($sql_root['caption']) ?  $sql_root['caption'] : '';
+				$mysql_edit_data = include_once dirname(__FILE__).'/lib/formfields/customer/formfield.mysql.php';
+				$mysql_edit_form = HTMLform2::genHTMLForm($mysql_edit_data, $result);
 
 				eval("echo \"" . getTemplate('mysql/mysqls_edit') . "\";");
 			}

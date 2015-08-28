@@ -28,19 +28,25 @@ header('Expires: ' . gmdate( 'D, d M Y H:i:s \G\M\T', time()));
 // Prevent inline - JS to be executed (i.e. XSS) in browsers which support this,
 // Inline-JS is no longer allowed and used
 // See: http://people.mozilla.org/~bsterne/content-security-policy/index.html
-header("X-Content-Security-Policy: allow 'self'; frame-ancestors 'none'");
+// New stuff see: https://www.owasp.org/index.php/List_of_useful_HTTP_headers and https://www.owasp.org/index.php/Content_Security_Policy
+$csp_content = "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; reflected-xss block;";
+header("Content-Security-Policy: ".$csp_content);
+header("X-Content-Security-Policy: ".$csp_content);
+header("X-WebKit-CSP: ".$csp_content);
+
+header("X-XSS-Protection: 1; mode=block");
 
 // Don't allow to load Froxlor in an iframe to prevent i.e. clickjacking
-header('X-Frame-Options: DENY');
+header("X-Frame-Options: DENY");
 
 // If Froxlor was called via HTTPS -> enforce it for the next time
 if (isset($_SERVER['HTTPS']) && (strtolower($_SERVER['HTTPS']) != 'off')) {
-	header('Strict-Transport-Security: max-age=500');
+	header("Strict-Transport-Security: max-age=15768000");
 }
 
 // Internet Explorer shall not guess the Content-Type, see:
 // http://blogs.msdn.com/ie/archive/2008/07/02/ie8-security-part-v-comprehensive-protection.aspx
-header('X-Content-Type-Options: nosniff' );
+header("X-Content-Type-Options: nosniff");
 
 // ensure that default timezone is set
 if (function_exists("date_default_timezone_set") && function_exists("date_default_timezone_get")) {
@@ -72,6 +78,7 @@ define('FROXLOR_INSTALL_DIR', dirname(dirname(__FILE__)));
 // check whether the userdata file exists
 if (!file_exists(FROXLOR_INSTALL_DIR.'/lib/userdata.inc.php')) {
 	$config_hint = file_get_contents(FROXLOR_INSTALL_DIR.'/templates/'.$_deftheme.'/misc/configurehint.tpl');
+	$config_hint = str_replace("<CURRENT_YEAR>", date('Y', time()), $config_hint);
 	die($config_hint);
 }
 
@@ -86,6 +93,7 @@ if (!is_readable(FROXLOR_INSTALL_DIR.'/lib/userdata.inc.php')) {
 	$owner_hint = str_replace("<USER>", $posixusername['name'], $owner_hint);
 	$owner_hint = str_replace("<GROUP>", $posixgroup['name'], $owner_hint);
 	$owner_hint = str_replace("<FROXLOR_INSTALL_DIR>", FROXLOR_INSTALL_DIR, $owner_hint);
+	$owner_hint = str_replace("<CURRENT_YEAR>", date('Y', time()), $owner_hint);
 	// show
 	die($owner_hint);
 }
@@ -99,6 +107,7 @@ if (!isset($sql)
    || !is_array($sql)
 ) {
 	$config_hint = file_get_contents(FROXLOR_INSTALL_DIR.'/templates/'.$_deftheme.'/misc/configurehint.tpl');
+	$config_hint = str_replace("<CURRENT_YEAR>", date('Y', time()), $config_hint);
 	die($config_hint);
 }
 
@@ -121,27 +130,30 @@ $idna_convert = new idna_convert_wrapper();
 /**
  * disable magic_quotes_runtime if enabled
  */
-if (get_magic_quotes_runtime()) {
-	// deactivate
-	set_magic_quotes_runtime(false);
-}
-
-/**
- * Reverse magic_quotes_gpc=on to have clean GPC data again
- */
-if (get_magic_quotes_gpc()) {
-	$in = array(&$_GET, &$_POST, &$_COOKIE);
-
-	while (list($k, $v) = each($in)) {
-		foreach ($v as $key => $val) {
-			if (!is_array($val)) {
-				$in[$k][$key] = stripslashes($val);
-				continue;
-			}
-			$in[] = & $in[$k][$key];
-		}
+// since 5.4 get_magic_quotes_runtime() and get_magic_quotes_gpc() return always FALSE
+if (version_compare(PHP_VERSION, "5.4.0", "<")) {
+	if (get_magic_quotes_runtime()) {
+		// deactivate
+		set_magic_quotes_runtime(false);
 	}
-	unset($in);
+
+	/**
+	 * Reverse magic_quotes_gpc=on to have clean GPC data again
+	 */
+	if (get_magic_quotes_gpc()) {
+		$in = array(&$_GET, &$_POST, &$_COOKIE);
+	
+		while (list($k, $v) = each($in)) {
+			foreach ($v as $key => $val) {
+				if (!is_array($val)) {
+					$in[$k][$key] = stripslashes($val);
+					continue;
+				}
+				$in[] = & $in[$k][$key];
+			}
+		}
+		unset($in);
+	}
 }
 
 /**
@@ -394,6 +406,7 @@ if (isset($userinfo['loginname'])
 /**
  * Fills variables for navigation, header and footer
  */
+$navigation = "";
 if (AREA == 'admin' || AREA == 'customer') {
 	if (hasUpdates($version)) {
 		/*
@@ -474,7 +487,6 @@ if (Settings::Get('ticket.enabled') == '1') {
 	}
 }
 
-$webfont = str_replace('+', ' ', Settings::Get('panel.webfont'));
 $js = "";
 if (array_key_exists('js', $_themeoptions['variants'][$themevariant]) && is_array($_themeoptions['variants'][$themevariant]['js'])) {
 	foreach ($_themeoptions['variants'][$themevariant]['js'] as $jsfile) {

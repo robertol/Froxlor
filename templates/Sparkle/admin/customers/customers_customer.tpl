@@ -27,16 +27,16 @@
 				<if $row['diskspace'] != 'UL'>
 					<if (($row['diskspace']/100)*(int)Settings::Get('system.report_webmax')) < $row['diskspace_used']>
 						<div class="progress progress-danger tipper" title="{$row['diskspace_used']} MiB {$lng['panel']['used']}, {$row['diskspace']} MiB {$lng['panel']['assigned']}">
-							<div class="bar" style="width: {$disk_percent}%"></div>
+							<div class="bar" aria-valuenow="{$disk_percent}" aria-valuemin="0" aria-valuemax="100"></div>
 						</div>
 					<else>
 						<div class="progress tipper" title="{$row['diskspace_used']} MiB {$lng['panel']['used']}, {$row['diskspace']} MiB {$lng['panel']['assigned']}">
-							<div class="bar" style="width: {$disk_percent}%"></div>
+							<div class="bar" aria-valuenow="{$disk_percent}" aria-valuemin="0" aria-valuemax="100"></div>
 						</div>
 					</if>
 				<else>
 					<div class="progress">∞
-							<div class="bar" style="width: 0%"></div>
+							<div class="bar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
 					</div>
 				</if>
 			</span>
@@ -45,16 +45,16 @@
 				<if $row['traffic'] != 'UL'>
 					<if (($row['traffic']/100)*(int)Settings::Get('system.report_trafficmax')) < $row['traffic_used']>
 						<div class="progress progress-danger tipper" title="{$row['traffic_used']} GiB {$lng['panel']['used']}, {$row['traffic']} GiB {$lng['panel']['assigned']}">
-							<div class="bar" style="width: {$traffic_percent}%"></div>
+							<div class="bar" aria-valuenow="{$traffic_percent}" aria-valuemin="0" aria-valuemax="100"></div>
 						</div>
 					<else>
 						<div class="progress tipper" title="{$row['traffic_used']} GiB {$lng['panel']['used']}, {$row['traffic']} GiB {$lng['panel']['assigned']}">
-							<div class="bar" style="width: {$traffic_percent}%"></div>
+							<div class="bar" aria-valuenow="{$traffic_percent}" aria-valuemin="0" aria-valuemax="100"></div>
 						</div>
 					</if>
 				<else>
 					<div class="progress">∞
-						<div class="bar" style="width: 0%"></div>
+						<div class="bar" aria-valuenow="{$traffic_percent}" aria-valuemin="0" aria-valuemax="100"></div>
 					</div>
 				</if>
 			</span>
@@ -66,12 +66,21 @@
 		</a>&nbsp;
 		<a href="{$linker->getLink(array('section' => 'customers', 'page' => $page, 'action' => 'delete', 'id' => $row['customerid']))}">
 			<img src="templates/{$theme}/assets/img/icons/delete.png" alt="{$lng['panel']['delete']}" title="{$lng['panel']['delete']}" />
-		</a>&nbsp;
-		<if $islocked == 1>
-		<a href="{$linker->getLink(array('section' => 'customers', 'page' => $page, 'action' => 'unlock', 'id' => $row['customerid']))}">
-			<img src="templates/{$theme}/assets/img/icons/unlock.png" alt="{$lng['panel']['unlock']}" title="{$lng['panel']['unlock']}" />
 		</a>
+		<if $islocked == 1>
+			&nbsp;<a href="{$linker->getLink(array('section' => 'customers', 'page' => $page, 'action' => 'unlock', 'id' => $row['customerid']))}">
+				<img src="templates/{$theme}/assets/img/icons/unlock.png" alt="{$lng['panel']['unlock']}" title="{$lng['panel']['unlock']}" />
+			</a>
+		</if>
+		<if $row['custom_notes'] != ''>
+			&nbsp;<img src="templates/{$theme}/assets/img/icons/info.png" class="notes" data-id="{$row['loginname']}" alt="{$lng['usersettings']['custom_notes']['title']}" title="{$lng['usersettings']['custom_notes']['title']}" />
 		</if>
 	</td>
-
 </tr>
+<if $row['custom_notes'] != ''>
+	<tr class="notes_block" id="notes_{$row['loginname']}">
+		<td colspan="6">
+			{$row['custom_notes']}
+		</td>
+	</tr>
+</if>
